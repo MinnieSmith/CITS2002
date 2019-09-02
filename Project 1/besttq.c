@@ -27,7 +27,6 @@
 #define TIME_CONTEXT_SWITCH     5
 #define TIME_ACQUIRE_BUS        5
 
-#define BUFSIZ                  10000
 
 
 //  NOTE THAT DEVICE DATA-TRANSFER-RATES ARE MEASURED IN BYTES/SECOND,
@@ -37,6 +36,27 @@
 
 int optimal_time_quantum                = 0;
 int total_process_completion_time       = 0;
+
+struct device
+{
+    char *name_pointer;
+    int bytes_per_sec;
+ } tracefile_devices;
+
+struct event
+{
+    int cpu_time;
+    char *device;
+    int bytes_transfered;
+} tracefile_events;
+
+struct process
+{
+    int start_time;
+    struct sevent;
+    int exit_time;
+} tracefile_processes;
+
 
 //  ----------------------------------------------------------------------
 
@@ -75,9 +95,15 @@ void parse_tracefile(char program[], char tracefile[])
         if(nwords <= 0) {
             continue;
         }
-//  LOOK FOR LINES DEFINING DEVICES, PROCESSES, AND PROCESS EVENTS
-        if(nwords == 4 && strcmp(word0, "device") == 0) {
-            ;   // FOUND A DEVICE DEFINITION, WE'LL NEED TO STORE THIS SOMEWHERE
+
+        // struct event tracefile_events;
+        if (nwords == 4 && strcmp(word0, "device") == 0)
+        // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
+        {
+            tracefile_devices.name_pointer = word1;
+            tracefile_devices.bytes_per_sec = atoi(word2);
+            printf("%s\n", tracefile_devices.name_pointer);
+            printf("%i\n", tracefile_devices.bytes_per_sec);
         }
 
         else if(nwords == 1 && strcmp(word0, "reboot") == 0) {
@@ -85,7 +111,9 @@ void parse_tracefile(char program[], char tracefile[])
         }
 
         else if(nwords == 4 && strcmp(word0, "process") == 0) {
-            ;   // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
+            // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
+            tracefile_processes.start_time = word1;
+            printf("%s\n", word1);
         }
 
         else if(nwords == 4 && strcmp(word0, "i/o") == 0) {
