@@ -37,21 +37,22 @@ struct device
 {
     char *name_pointer;
     int bytes_per_sec;
-};
+} tracefile_devices;
 
 struct event
 {
     int cpu_time;
     char *device;
     int bytes_transfered;
-};
+} tracefile_events;
 
 struct process
 {
+    int process_id;
     int start_time;
-    // struct sevent;
+    // struct tracefile_events;
     int exit_time;
-};
+} tracefile_processes;
 
 //  ----------------------------------------------------------------------
 
@@ -94,30 +95,39 @@ void parse_tracefile(char program[], char tracefile[])
             continue;
         }
         //  LOOK FOR LINES DEFINING DEVICES, PROCESSES, AND PROCESS EVENT
-        struct device tracefile_devices;
+        
         // struct event tracefile_events;
         if (nwords == 4 && strcmp(word0, "device") == 0)
         // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
         {
-            tracefile_devices.name_pointer = word1;
-            tracefile_devices.bytes_per_sec = atoi(word2);
-            printf("%s\n", tracefile_devices.name_pointer);
-            printf("%i\n", tracefile_devices.bytes_per_sec);
+            tracefile_devices.name_pointer = strdup(word1);
+            tracefile_devices.bytes_per_sec = atoi(strdup(word2));
+            printf("%s\t%i\n", tracefile_devices.name_pointer, tracefile_devices.bytes_per_sec);
         }
-        
+
+        else if(nwords == 1 && strcmp(word0, "reboot") == 0) {
+            ;   // NOTHING REALLY REQUIRED, DEVICE DEFINITIONS HAVE FINISHED
+        }
+        else if(nwords == 4 && strcmp(word0, "process") == 0) {
+            // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
+            tracefile_processes.process_id = atoi(strdup(word1));
+            tracefile_processes.start_time = atoi(strdup(word2));
+            printf("%i\t%i\n", tracefile_processes.process_id, tracefile_processes.start_time);
+        }
         else if (nwords == 4 && strcmp(word0, "i/o") == 0)
         {
             //  AN I/O EVENT FOR THE CURRENT PROCESS, STORE THIS SOMEWHERE
-            // tracefile_events.cpu_time = atoi(word1);
-            // tracefile_events.device = word2;
-            // tracefile_events.bytes_transfered = atoi(word3);
-            // printf("%i\n%s\n%i\n", tracefile_events.cpu_time, tracefile_events.device, tracefile_events.bytes_transfered);
-            printf("%s\n", word1);
+            tracefile_events.cpu_time = atoi(strdup(word1));
+            tracefile_events.device = strdup(word2);
+            tracefile_events.bytes_transfered = atoi(strdup(word3));
+            printf("%i\t%s\t%i\n", tracefile_events.cpu_time, tracefile_events.device, tracefile_events.bytes_transfered);
+
         }
 
         else if (nwords == 2 && strcmp(word0, "exit") == 0)
         {
-            ; //  PRESUMABLY THE LAST EVENT WE'LL SEE FOR THE CURRENT PROCESS
+            tracefile_processes.exit_time = atoi(strdup(word1));
+            printf("Exit time is %i\n", tracefile_processes.exit_time);
         }
 
         else if (nwords == 1 && strcmp(word0, "}") == 0)
@@ -131,10 +141,12 @@ void parse_tracefile(char program[], char tracefile[])
             exit(EXIT_FAILURE);
         }
     }
+
     fclose(fp);
 }
 
 int main(int argc, char *argv[])
 {
     parse_tracefile(argv[0], argv[1]);
+
 }
