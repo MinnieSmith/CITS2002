@@ -38,12 +38,38 @@ struct device
 {
     char *name_pointer;
     int bytes_per_sec;
+<<<<<<< HEAD
 } tracefile_devices[MAX_DEVICES], temp;
+||||||| merged common ancestors
+};
+
+struct event
+{
+    int cpu_time;
+    char *device;
+    int bytes_transfered;
+};
+=======
+} tracefile_devices;
+
+struct event
+{
+    int cpu_time;
+    char *device;
+    int bytes_transfered;
+} tracefile_events;
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
 
 struct process
 {
+<<<<<<< HEAD
     int id;
+||||||| merged common ancestors
+=======
+    int process_id;
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
     int start_time;
+<<<<<<< HEAD
     struct event
     {
         int cpu_time;
@@ -51,8 +77,19 @@ struct process
         int priority;
         int bytes_transfered;
     } tracefile_events[MAX_EVENTS_PER_PROCESS];
+||||||| merged common ancestors
+    // struct sevent;
+=======
+    // struct tracefile_events;
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
     int exit_time;
+<<<<<<< HEAD
 } tracefile_processes[MAX_PROCESSES];
+||||||| merged common ancestors
+};
+=======
+} tracefile_processes;
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
 
 //  ----------------------------------------------------------------------
 
@@ -96,17 +133,45 @@ void parse_tracefile(char program[], char tracefile[])
             continue;
         }
         //  LOOK FOR LINES DEFINING DEVICES, PROCESSES, AND PROCESS EVENT
+<<<<<<< HEAD
 
+||||||| merged common ancestors
+        struct device tracefile_devices;
+=======
+        
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
         // struct event tracefile_events;
         if (nwords == 4 && strcmp(word0, "device") == 0)
         // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
         {
+<<<<<<< HEAD
             int n = 0;
             tracefile_devices[n].name_pointer = strdup(word1);
             tracefile_devices[n].bytes_per_sec = atoi(strdup(word2));
             printf("%s\t%i\n", tracefile_devices[n].name_pointer, tracefile_devices[n].bytes_per_sec);
             n++;
+||||||| merged common ancestors
+            tracefile_devices.name_pointer = word1;
+            tracefile_devices.bytes_per_sec = atoi(word2);
+            printf("%s\n", tracefile_devices.name_pointer);
+            printf("%i\n", tracefile_devices.bytes_per_sec);
+=======
+            tracefile_devices.name_pointer = strdup(word1);
+            tracefile_devices.bytes_per_sec = atoi(strdup(word2));
+            printf("%s\t%i\n", tracefile_devices.name_pointer, tracefile_devices.bytes_per_sec);
         }
+
+        else if(nwords == 1 && strcmp(word0, "reboot") == 0) {
+            ;   // NOTHING REALLY REQUIRED, DEVICE DEFINITIONS HAVE FINISHED
+        }
+        else if(nwords == 4 && strcmp(word0, "process") == 0) {
+            // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
+            tracefile_processes.process_id = atoi(strdup(word1));
+            tracefile_processes.start_time = atoi(strdup(word2));
+            printf("%i\t%i\n", tracefile_processes.process_id, tracefile_processes.start_time);
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
+        }
+<<<<<<< HEAD
 
         else if (nwords == 1 && strcmp(word0, "reboot") == 0)
         {
@@ -123,9 +188,14 @@ void parse_tracefile(char program[], char tracefile[])
             n++;
         }
 
+||||||| merged common ancestors
+        
+=======
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
         else if (nwords == 4 && strcmp(word0, "i/o") == 0)
         {
             //  AN I/O EVENT FOR THE CURRENT PROCESS, STORE THIS SOMEWHERE
+<<<<<<< HEAD
             int n = 0;
             tracefile_processes[nprocess].tracefile_events[n].cpu_time = atoi(strdup(word1));
             tracefile_processes[nprocess].tracefile_events[n].device = strdup(word2);
@@ -133,13 +203,33 @@ void parse_tracefile(char program[], char tracefile[])
             printf("%i\t%s\t%i\n", tracefile_processes[nprocess].tracefile_events[n].cpu_time,
                    tracefile_processes[nprocess].tracefile_events[n].device,
                    tracefile_processes[nprocess].tracefile_events[n].bytes_transfered);
+||||||| merged common ancestors
+            // tracefile_events.cpu_time = atoi(word1);
+            // tracefile_events.device = word2;
+            // tracefile_events.bytes_transfered = atoi(word3);
+            // printf("%i\n%s\n%i\n", tracefile_events.cpu_time, tracefile_events.device, tracefile_events.bytes_transfered);
+            printf("%s\n", word1);
+=======
+            tracefile_events.cpu_time = atoi(strdup(word1));
+            tracefile_events.device = strdup(word2);
+            tracefile_events.bytes_transfered = atoi(strdup(word3));
+            printf("%i\t%s\t%i\n", tracefile_events.cpu_time, tracefile_events.device, tracefile_events.bytes_transfered);
+
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
         }
 
         else if (nwords == 2 && strcmp(word0, "exit") == 0)
         {
+<<<<<<< HEAD
             tracefile_processes[nprocess].exit_time = atoi(strdup(word1));
             printf("exit\t %i\n", tracefile_processes[nprocess].exit_time);
             nprocess++;
+||||||| merged common ancestors
+            ; //  PRESUMABLY THE LAST EVENT WE'LL SEE FOR THE CURRENT PROCESS
+=======
+            tracefile_processes.exit_time = atoi(strdup(word1));
+            printf("Exit time is %i\n", tracefile_processes.exit_time);
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
         }
 
         else if (nwords == 1 && strcmp(word0, "}") == 0)
@@ -153,11 +243,13 @@ void parse_tracefile(char program[], char tracefile[])
             exit(EXIT_FAILURE);
         }
     }
+
     fclose(fp);
 }
 
 void device_priority_sort()
 {
+<<<<<<< HEAD
 
     for (int i = 0; i < MAX_DEVICES - 1; i++)
     {
@@ -173,6 +265,12 @@ void device_priority_sort()
     {
         printf("%s\t%i\n", tracefile_devices[i].name_pointer, tracefile_devices[i].bytes_per_sec);
     }
+||||||| merged common ancestors
+    parse_tracefile(argv[0], argv[1]);
+=======
+    parse_tracefile(argv[0], argv[1]);
+
+>>>>>>> ad1fa85395d16c6d0103757d2e7d30fa2c70dd20
 }
 
     int main(int argc, char *argv[])
