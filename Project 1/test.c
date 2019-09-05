@@ -4,14 +4,12 @@
 #include <stdbool.h>
 
 /* CITS2002 Project 1 2019
-   Name(s):             student-name1 (, student-name2)
-   Student number(s):   student-number-1 (, student-number-2)
+   Name(s):             Minh Trang Smith
+   Student number(s):   20956909
  */
 
 //  besttq (v1.0)
 //  Written by Chris.McDonald@uwa.edu.au, 2019, free for all to copy and modify
-
-//  Compile with:  cc -std=c99 -Wall -Werror -o besttq besttq.c
 
 //  THESE CONSTANTS DEFINE THE MAXIMUM SIZE OF TRACEFILE CONTENTS (AND HENCE
 //  JOB-MIX) THAT YOUR PROGRAM NEEDS TO SUPPORT.  YOU'LL REQUIRE THESE
@@ -31,11 +29,14 @@
 //  AND THAT THE TOTAL-PROCESS-COMPLETION-TIME WILL NOT EXCEED 2000 SECONDS
 //  (SO YOU CAN SAFELY USE 'STANDARD' 32-BIT ints TO STORE TIMES).
 
-int optimal_time_quantum = 0;
 int total_process_completion_time = 0;
+int optimal_time_quantum = 0;
 
 int nprocess = 0;
 int l = 0, m = 0, n = 0;
+
+//  ----------------------------------------------------------------------
+// STRUCTURES DECLARATIONS
 
 struct device
 {
@@ -56,22 +57,20 @@ struct process
         int bytes_transfered;
     } tracefile_events[MAX_EVENTS_PER_PROCESS];
     int exit_time;
-} tracefile_processes[MAX_PROCESSES];
+    int time_remaining;
+} tracefile_processes[MAX_PROCESSES], temp_process;
 
-struct qNode
+struct qnode
 {
-    struct process* id;
-    struct queue* next;
-    struct queue* previous;
-
+    struct process id;
+    struct qnode *next;
 };
 
 struct queue
 {
-    struct qNode *head;
-    struct qNode *rear;
+    struct qnode *head;
+    struct qnode *rear;
 };
-
 
 //  ----------------------------------------------------------------------
 
@@ -175,47 +174,124 @@ void parse_tracefile(char program[], char tracefile[])
     fclose(fp);
 }
 
+//  ----------------------------------------------------------------------
+// ASSIGN DEVICE PRIORITY
+
 void device_priority_sort()
 {
-    int k, i, j, l, m;
+    int k, i, j;
     // sort device priority by transfer rate descending
-    for (i = 0; i < MAX_DEVICES - 1; i++)
+
+    for (j = 0; j < MAX_DEVICES - 1; j++)
     {
-        for(j=0; j<MAX_DEVICES -1; j++)
+        if (tracefile_devices[j].bytes_per_sec < tracefile_devices[j + 1].bytes_per_sec)
         {
-            if(tracefile_devices[j].bytes_per_sec<tracefile_devices[j+1].bytes_per_sec)
-            {
-                temp = tracefile_devices[j];
-                tracefile_devices[j] = tracefile_devices[j+1];
-                tracefile_devices[j+1] = temp;
-            }
+            temp = tracefile_devices[j];
+            tracefile_devices[j] = tracefile_devices[j + 1];
+            tracefile_devices[j + 1] = temp;
         }
     }
+
     // assign priority to tracefile_devices struct
     for (k = 0; k < MAX_DEVICES; k++)
     {
-        tracefile_devices[k].priority = k+1;
+        tracefile_devices[k].priority = k + 1;
         printf("%i\t%s\n", tracefile_devices[k].priority, tracefile_devices[k].name_pointer);
     }
+}
 
-    for (l=0; l<MAX_PROCESSES; l++)
+//  ----------------------------------------------------------------------
+// CREATE QUEUES AND ADD AND REMOVE NODES
+
+// create queues
+struct queue *create_queues()
+{
+    struct queue *q = (struct queue *)malloc(sizeof(struct queue));
+    q->head = q->rear = NULL;
+    return q;
+}
+
+// create nodes
+struct qnode *create_nodes(struct process id)
+{
+    struct qnode *temp = (struct qnode *)malloc(sizeof(struct qnode));
+    temp->id = id;
+    temp->next = NULL;
+    return temp;
+}
+
+// add node to queue
+void enqueue(struct queue *q, struct process id)
+{
+    // create a new node
+    struct qnode *temp = create_nodes(id);
+    // if queue is empty, head and rear are the same
+    if (q->rear == NULL)
     {
-        for( m=0; m<MAX_PROCESSES; m++)
+        q->head = q->rear = temp;
+        return;
+    }
+    // add the new node at the rear and change rear
+    q->rear->next = temp;
+    q->rear = temp;
+}
+
+// remove node from head
+struct qnode *dequeue(struct queue *q)
+{
+    // checks to see if the queue is empty
+    if (q->head == NULL)
+    {
+        return NULL;
+    }
+    // store previous front and move head one node down
+    struct qnode *temp = q->head;
+    q->head = q->head->next;
+
+    if (q->head == NULL)
+        q->rear = NULL;
+    return temp;
+}
+
+// sort nodes
+void sort_nodes_for_ready_queue()
+{
+    int j;
+    for (j = 0; j < m; j++)
+    {
+        if (qnode[j]->id > tracefile_processes[j + 1].start_time)
         {
-            if(tra)
+            temp_process = tracefile_processes[j];
+            tracefile_processes[j] = tracefile_processes[j + 1];
+            tracefile_processes[j + 1] = temp_process;
         }
     }
 }
 
-void sort_into_event_queues()
+// create READY queue and add processes to nodes
+struct queue *create_ready_queue()
 {
-    // EVENT QUEUE 1
-    for 
+    int i, j, k;
+    struct queue *ready = create_queues();
+    // loop through and create m (number of processes) nodes
+    for (i = 0; i < m; i++)
+    {
+        create_nodes(tracefile_processes[i]);
+    }
 
+    sort_nodes_for_ready_queue();
+
+    return ready;
 }
+
+//  ----------------------------------------------------------------------
+// CREATE THE CPU
+
+//
 
 int main(int argc, char *argv[])
 {
     parse_tracefile(argv[0], argv[1]);
     device_priority_sort();
+    create_ready_queue();
 }
