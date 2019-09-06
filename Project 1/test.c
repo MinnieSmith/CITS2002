@@ -62,7 +62,7 @@ struct process
 
 struct qnode
 {
-    struct process id;
+    struct process *id;
     struct qnode *next;
 };
 
@@ -155,6 +155,7 @@ void parse_tracefile(char program[], char tracefile[])
         else if (nwords == 2 && strcmp(word0, "exit") == 0)
         {
             tracefile_processes[nprocess].exit_time = atoi(strdup(word1));
+            tracefile_processes[nprocess].time_remaining = atoi(strdup(word1));
             printf("exit\t %i\n", tracefile_processes[nprocess].exit_time);
             nprocess++;
         }
@@ -182,13 +183,16 @@ void device_priority_sort()
     int k, i, j;
     // sort device priority by transfer rate descending
 
-    for (j = 0; j < MAX_DEVICES - 1; j++)
+    for (i = 0; i < MAX_DEVICES; i++)
     {
-        if (tracefile_devices[j].bytes_per_sec < tracefile_devices[j + 1].bytes_per_sec)
+        for (j = 0; j < MAX_DEVICES - 1; j++)
         {
-            temp = tracefile_devices[j];
-            tracefile_devices[j] = tracefile_devices[j + 1];
-            tracefile_devices[j + 1] = temp;
+            if (tracefile_devices[j].bytes_per_sec < tracefile_devices[j + 1].bytes_per_sec)
+            {
+                temp = tracefile_devices[j];
+                tracefile_devices[j] = tracefile_devices[j + 1];
+                tracefile_devices[j + 1] = temp;
+            }
         }
     }
 
@@ -212,7 +216,7 @@ struct queue *create_queues()
 }
 
 // create nodes
-struct qnode *create_nodes(struct process id)
+struct qnode *create_nodes(struct process *id)
 {
     struct qnode *temp = (struct qnode *)malloc(sizeof(struct qnode));
     temp->id = id;
@@ -221,7 +225,7 @@ struct qnode *create_nodes(struct process id)
 }
 
 // add node to queue
-void enqueue(struct queue *q, struct process id)
+void enqueue(struct queue *q, struct process *id)
 {
     // create a new node
     struct qnode *temp = create_nodes(id);
@@ -239,11 +243,6 @@ void enqueue(struct queue *q, struct process id)
 // remove node from head
 struct qnode *dequeue(struct queue *q)
 {
-    // checks to see if the queue is empty
-    if (q->head == NULL)
-    {
-        return NULL;
-    }
     // store previous front and move head one node down
     struct qnode *temp = q->head;
     q->head = q->head->next;
@@ -253,17 +252,24 @@ struct qnode *dequeue(struct queue *q)
     return temp;
 }
 
-// sort nodes
-void sort_nodes_for_ready_queue()
+// insert in READY queue
+void sorted_insert(struct queue *q, struct qnode *n)
 {
-    int j;
-    for (j = 0; j < m; j++)
+    if (is_queue_empty(q))
     {
-        if (qnode[j]->id > tracefile_processes[j + 1].start_time)
+        q->head = n;
+        q->rear = n;
+    }
+    else
+    {
+        struct qnode *tmp = q->head;
+        while(1)
         {
-            temp_process = tracefile_processes[j];
-            tracefile_processes[j] = tracefile_processes[j + 1];
-            tracefile_processes[j + 1] = temp_process;
+            if(tmp->next->id->start_time > n->id->start_time)
+            // add the node
+            {
+
+            }
         }
     }
 }
@@ -271,27 +277,90 @@ void sort_nodes_for_ready_queue()
 // create READY queue and add processes to nodes
 struct queue *create_ready_queue()
 {
-    int i, j, k;
+    int i;
     struct queue *ready = create_queues();
     // loop through and create m (number of processes) nodes
     for (i = 0; i < m; i++)
     {
-        create_nodes(tracefile_processes[i]);
+        enqueue(ready, &tracefile_processes[i]);
     }
-
-    sort_nodes_for_ready_queue();
+    //sort nodes: lowest start time at front of ready queue
 
     return ready;
 }
 
-//  ----------------------------------------------------------------------
-// CREATE THE CPU
+int is_queue_empty(struct queue *q)
+{
+    return q->head != NULL && q->rear != NULL;
+}
 
-//
+//  ----------------------------------------------------------------------
+int tq;
+struct total_completion_times
+{
+    int tq;
+    int tc;
+} tct[40];
+
+//  ----------------------------------------------------------------------
+
+// THE CPU
+void cpu_running(struct queue *q)
+{
+    int n = 0;
+    int max_depth = 9999;
+
+    for (tq = 100; tq <= 2000; tq = tq + 100)
+    {
+        total_process_completion_time = q->head->id->start_time;
+        while (is_queue_empty(q))
+        {
+            if (0 < q->head->id->time_remaining <= tq)
+            {
+                total_process_completion_time += TIME_CONTEXT_SWITCH + q->head->id->time_remaining;
+                printf("Process %i has exited\n", q->head->id->id);
+                dequeue(q);
+                max_depth--;
+                if (max_depth == 0)
+                {
+                    printf("Exit due to infinite loop");
+                    exit(EXIT_FAILURE);
+                }
+            }
+            else if (q->head->id->time_remaining > tq)
+            {
+                total_process_completion_time += TIME_CONTEXT_SWITCH + tq;
+                q->head->id->time_remaining -= tq;
+                q->head->id->start_time += TIME_CONTEXT_SWITCH + tq;
+                sort_nodes_in_ready_queue_start_time(q);
+            }
+        }
+        tct[n].tq = tq;
+        tct[n].tc = total_process_completion_time;
+        n++;
+    }
+
+    // loop through all possible total completion time to find the shortest time
+
+    int i;
+    int index;
+    int min = tct[0].tc;
+    for (i = 0; i < n; i++)
+    {
+        if (tct[i].tc < min)
+        {
+            min = tct[i].tc;
+            index = i;
+        }
+        printf("%i \t%i\n", tct[i].tq, tct[i].tc);
+    }
+    printf("best %i \t%i \n", tct[index].tc, tct[index].tq);
+}
 
 int main(int argc, char *argv[])
 {
     parse_tracefile(argv[0], argv[1]);
     device_priority_sort();
     create_ready_queue();
+    cpu_running(create_ready_queue());
 }
