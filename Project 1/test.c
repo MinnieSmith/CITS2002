@@ -43,7 +43,7 @@ struct device
     char *name_pointer;
     int bytes_per_sec;
     int priority;
-} tracefile_devices[MAX_DEVICES], temp;
+} tracefile_devices[MAX_DEVICES];
 
 struct process
 {
@@ -58,7 +58,7 @@ struct process
     } tracefile_events[MAX_EVENTS_PER_PROCESS];
     int exit_time;
     int time_remaining;
-} tracefile_processes[MAX_PROCESSES], temp_process;
+} tracefile_processes[MAX_PROCESSES];
 
 struct qnode
 {
@@ -181,6 +181,7 @@ void parse_tracefile(char program[], char tracefile[])
 void device_priority_sort()
 {
     int k, i, j;
+    struct device temp;
     // sort device priority by transfer rate descending
 
     for (i = 0; i < MAX_DEVICES; i++)
@@ -252,23 +253,21 @@ struct qnode *dequeue(struct queue *q)
     return temp;
 }
 
-// insert in READY queue
-void sorted_insert(struct queue *q, struct qnode *n)
+// sort nodes
+void sort_nodes_in_ready_queue_start_time(struct qnode *head)
 {
-    if (is_queue_empty(q))
-    {
-        q->head = n;
-        q->rear = n;
-    }
-    else
-    {
-        struct qnode *tmp = q->head;
-        while(1)
-        {
-            if(tmp->next->id->start_time > n->id->start_time)
-            // add the node
-            {
+    struct qnode *i, *j;
+    struct process *temp;
 
+    for (i = head; i->next != NULL; i = i->next)
+    {
+        for (j = i->next; j != NULL; j = j->next)
+        {
+            if (i->id->start_time > j->id->start_time)
+            {
+                temp = i->id;
+                i->id = j->id;
+                j->id = temp;
             }
         }
     }
@@ -284,83 +283,118 @@ struct queue *create_ready_queue()
     {
         enqueue(ready, &tracefile_processes[i]);
     }
+    printf("Process %i and %i added \n", ready->head->id->id, ready->rear->id->id);
     //sort nodes: lowest start time at front of ready queue
+    sort_nodes_in_ready_queue_start_time(ready->head);
 
     return ready;
 }
 
-int is_queue_empty(struct queue *q)
+int is_queue(struct queue *q)
 {
     return q->head != NULL && q->rear != NULL;
 }
 
 //  ----------------------------------------------------------------------
-int tq;
-struct total_completion_times
-{
-    int tq;
-    int tc;
-} tct[40];
-
-//  ----------------------------------------------------------------------
 
 // THE CPU
-void cpu_running(struct queue *q)
-{
-    int n = 0;
-    int max_depth = 9999;
 
+// check to see if context switch is required
+int is_context_switch(struct queue *q)
+{
+    struct process *temp;
+    temp = q->head->id;
+    sort_nodes_in_ready_queue_start_time(q->head);
+    if (q->head->id != temp)
+    {
+        total_process_completion_time += TIME_CONTEXT_SWITCH;
+        printf("context switch time added \n");
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+    printf("Process %i and %i sorted \n", q->head->id->id, q->rear->id->id);
+}
+
+int is_process_exit(struct queue *q, int tq)
+{
+    if (q->head->id->time_remaining <= tq)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+// calculate total completion time per time quantum
+int calculate_total_completion_time(int tq)
+{
+    struct queue *q = create_ready_queue();
+    total_process_completion_time = q->head->id->start_time + TIME_CONTEXT_SWITCH;
+    while (is_queue(q))
+    {
+        // check if there is only one process in the queue
+        if (q->head == q->rear)
+        {
+            total_process_completion_time += q->head->id->time_remaining;
+            printf("1.Process %i is completed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+            dequeue(q);
+        }
+        // if more than one process check if time remaining in head is less than tq, if so exit
+        else if (is_process_exit(q, tq))
+        {
+            total_process_completion_time += q->head->id->time_remaining + TIME_CONTEXT_SWITCH;
+            printf("2.Process %i is completed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+            dequeue(q);
+        }
+        // execute tq until there is a context switch
+        else if (!is_process_exit(q, tq))
+        {
+            do
+            {
+                total_process_completion_time += tq;
+                q->head->id->time_remaining -= tq;
+                q->head->id->start_time += tq;
+                printf("3.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+            } while (!is_context_switch(q));
+        }
+    }
+    printf("tct %i\n", total_process_completion_time);
+    return 0;
+
+}
+
+// find the best total completion time per time quantum
+int find_best_time_quantum()
+{
+    int best_tct[20];
+
+    int n = 0, tq;
     for (tq = 100; tq <= 2000; tq = tq + 100)
     {
-        total_process_completion_time = q->head->id->start_time;
-        while (is_queue_empty(q))
-        {
-            if (0 < q->head->id->time_remaining <= tq)
-            {
-                total_process_completion_time += TIME_CONTEXT_SWITCH + q->head->id->time_remaining;
-                printf("Process %i has exited\n", q->head->id->id);
-                dequeue(q);
-                max_depth--;
-                if (max_depth == 0)
-                {
-                    printf("Exit due to infinite loop");
-                    exit(EXIT_FAILURE);
-                }
-            }
-            else if (q->head->id->time_remaining > tq)
-            {
-                total_process_completion_time += TIME_CONTEXT_SWITCH + tq;
-                q->head->id->time_remaining -= tq;
-                q->head->id->start_time += TIME_CONTEXT_SWITCH + tq;
-                sort_nodes_in_ready_queue_start_time(q);
-            }
-        }
-        tct[n].tq = tq;
-        tct[n].tc = total_process_completion_time;
+        best_tct[n] = calculate_total_completion_time(tq);
+        printf("tct is %i \n", best_tct[n]);
         n++;
     }
+    return 0;
+}
 
-    // loop through all possible total completion time to find the shortest time
+void cpu_running()
+{
 
-    int i;
-    int index;
-    int min = tct[0].tc;
-    for (i = 0; i < n; i++)
-    {
-        if (tct[i].tc < min)
-        {
-            min = tct[i].tc;
-            index = i;
-        }
-        printf("%i \t%i\n", tct[i].tq, tct[i].tc);
-    }
-    printf("best %i \t%i \n", tct[index].tc, tct[index].tq);
+find_best_time_quantum();
+
 }
 
 int main(int argc, char *argv[])
 {
     parse_tracefile(argv[0], argv[1]);
     device_priority_sort();
-    create_ready_queue();
-    cpu_running(create_ready_queue());
+    calculate_total_completion_time(100);
+    calculate_total_completion_time(200);
+    calculate_total_completion_time(300);
 }
