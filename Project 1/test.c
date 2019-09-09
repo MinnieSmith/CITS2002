@@ -29,8 +29,6 @@
 //  AND THAT THE TOTAL-PROCESS-COMPLETION-TIME WILL NOT EXCEED 2000 SECONDS
 //  (SO YOU CAN SAFELY USE 'STANDARD' 32-BIT ints TO STORE TIMES).
 
-
-
 //  ----------------------------------------------------------------------
 // STRUCTURES DECLARATIONS
 
@@ -42,7 +40,9 @@ struct device
 };
 struct event
 {
+    int id;
     int cpu_time;
+    int start_time;
     char *device;
     int priority;
     int bytes_transfered;
@@ -63,10 +63,22 @@ struct qnode
     struct qnode *next;
 };
 
+struct io_qnode
+{
+    struct event *id;
+    struct qnode *next;
+};
+
 struct queue
 {
     struct qnode *head;
     struct qnode *rear;
+};
+
+struct io_queue
+{
+    struct io_qnode *head;
+    struct io_qnode *rear;
 };
 
 //  ----------------------------------------------------------------------
@@ -143,12 +155,16 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
         {
             //  AN I/O EVENT FOR THE CURRENT PROCESS, STORE THIS SOMEWHERE
 
+            p[nprocess].io_events[n].id = n + 1;
             p[nprocess].io_events[n].cpu_time = atoi(strdup(word1));
             p[nprocess].io_events[n].device = strdup(word2);
             p[nprocess].io_events[n].bytes_transfered = atoi(strdup(word3));
-            // printf("%i\t%s\t%i\n", p[nprocess].io_events[n].cpu_time,
-            //        p[nprocess].io_events[n].device,
-            //        p[nprocess].io_events[n].bytes_transfered);
+            p[nprocess].io_events[n].start_time = atoi(strdup(word1)) + p[nprocess].start_time;
+
+            printf("%i\t%s\t%i\t%i\n", p[nprocess].io_events[n].cpu_time,
+                   p[nprocess].io_events[n].device,
+                   p[nprocess].io_events[n].bytes_transfered,
+                   p[nprocess].io_events[n].start_time);
             n++;
         }
 
@@ -209,7 +225,7 @@ void device_priority_sort(struct device *d)
 //  ----------------------------------------------------------------------
 // CREATE QUEUES AND ADD AND REMOVE NODES
 
-// create queues
+// create ready queue
 struct queue *create_queues()
 {
     struct queue *q = (struct queue *)malloc(sizeof(struct queue));
@@ -217,8 +233,17 @@ struct queue *create_queues()
     return q;
 }
 
-// create nodes
-struct qnode *create_nodes(struct process *id)
+// create io queue
+struct io_queue *create_io_queues()
+{
+    struct io_queue *q = (struct io_queue *)malloc(sizeof(struct io_queue));
+    q->head = q->rear = NULL;
+    return q;
+}
+
+
+// create nodes for ready queue
+struct qnode *create_ready_nodes(struct process *id)
 {
     struct qnode *temp = (struct qnode *)malloc(sizeof(struct qnode));
     temp->id = id;
@@ -226,11 +251,36 @@ struct qnode *create_nodes(struct process *id)
     return temp;
 }
 
-// add node to queue
-void enqueue(struct queue *q, struct process *id)
+// create nodes for io queue
+struct io_qnode *create_io_nodes(struct event *id)
+{
+    struct io_qnode *temp = (struct io_qnode *)malloc(sizeof(struct io_qnode));
+    temp->id = id;
+    temp->next = NULL;
+    return temp;
+}
+
+// add node to ready queue
+void enqueue_ready(struct queue *q, struct process *id)
 {
     // create a new node
-    struct qnode *temp = create_nodes(id);
+    struct qnode *temp = create_ready_nodes(id);
+    // if queue is empty, head and rear are the same
+    if (q->rear == NULL)
+    {
+        q->head = q->rear = temp;
+        return;
+    }
+    // add the new node at the rear and change rear
+    q->rear->next = temp;
+    q->rear = temp;
+}
+
+// add node to io queue
+void enqueue_io(struct io_queue *q, struct event *id)
+{
+    // create a new node
+    struct io_qnode *temp = create_io_nodes(id);
     // if queue is empty, head and rear are the same
     if (q->rear == NULL)
     {
@@ -252,7 +302,7 @@ void dequeue(struct queue *q)
         q->rear = NULL;
 }
 
-// sort nodes
+// sort nodes in ready queue
 void sort_nodes_in_ready_queue_start_time(struct qnode *head)
 {
     struct qnode *i, *j;
@@ -272,21 +322,67 @@ void sort_nodes_in_ready_queue_start_time(struct qnode *head)
     }
 }
 
+// sort nodes in io queue
+void sort_nodes_in_io_queue_start_time_and_priority(struct qnode *head)
+{
+    struct qnode *i, *j;
+    struct process *temp;
+    // sort io queue according to start time
+    for (i = head; i->next != NULL; i = i->next)
+    {
+        for (j = i->next; j != NULL; j = j->next)
+        {
+            if (i->id->io_events->start_time > j->id->io_events->start_time)
+            {
+                temp = i->id;
+                i->id = j->id;
+                j->id = temp;
+            }
+            // if io event has same start time, sort in order of priority
+            if (i->id->io_events->start_time == j->id->io_events->start_time)
+            {
+                if (i->id->io_events->priority > j->id->io_events->priority) //lower priority int == higher device priority
+                {
+                    temp = i->id;
+                    i->id = j->id;
+                    j->id = temp;
+                }
+            }
+        }
+    }
+}
+
 // create READY queue and add processes to nodes
 struct queue *create_ready_queue(struct process *p, int nprocess)
 {
     int i;
     struct queue *ready = create_queues();
-    // loop through and create m (number of processes) nodes
+    // loop through and create nprocess nodes
     for (i = 0; i < nprocess; i++)
     {
-        enqueue(ready, &p[i]);
+        enqueue_ready(ready, &p[i]);
     }
     printf("Process %i and %i added \n", ready->head->id->id, ready->rear->id->id);
     //sort nodes: lowest start time at front of ready queue
     sort_nodes_in_ready_queue_start_time(ready->head);
 
     return ready;
+}
+
+// create I/O EVENT queue and add 1st event of each process
+struct queue *create_io_event_queue(struct process *p, int nprocess, int nevents)
+{
+    int i, j;
+    struct queue *io = create_queues();
+    // loop through and add all io events from each process
+    for (i = 0; i < nprocess; i++)
+        for (j = 0; j < nevents; j++)
+        {
+            enqueue_io(io, &p[i].io_events[j]);
+        }
+    sort_nodes_in_io_queue_start_time_and_priority(io->head);
+
+    return io;
 }
 
 int is_queue(struct queue *q)
@@ -406,14 +502,10 @@ int find_best_time_quantum(char program[], char tracefile[])
     return 0;
 }
 
+//  ------------------------------------------------------------------------
+
 int main(int argc, char *argv[])
 {
-    // int m = calculate_total_completion_time(argv[0], argv[1], 100);
-    // int n = calculate_total_completion_time(argv[0], argv[1], 200);
-    // int o = calculate_total_completion_time(argv[0], argv[1], 300);
-
-
-    // printf("%i\t%i\t%i\n", m,n,o);
 
     find_best_time_quantum(argv[0], argv[1]);
 }
