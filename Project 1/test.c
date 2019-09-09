@@ -29,7 +29,6 @@
 //  AND THAT THE TOTAL-PROCESS-COMPLETION-TIME WILL NOT EXCEED 2000 SECONDS
 //  (SO YOU CAN SAFELY USE 'STANDARD' 32-BIT ints TO STORE TIMES).
 
-int total_process_completion_time = 0;
 int optimal_time_quantum = 0;
 
 int nprocess = 0;
@@ -43,22 +42,23 @@ struct device
     char *name_pointer;
     int bytes_per_sec;
     int priority;
-} tracefile_devices[MAX_DEVICES];
+};
+struct event
+{
+    int cpu_time;
+    char *device;
+    int priority;
+    int bytes_transfered;
+};
 
 struct process
 {
     int id;
     int start_time;
-    struct event
-    {
-        int cpu_time;
-        char *device;
-        int priority;
-        int bytes_transfered;
-    } tracefile_events[MAX_EVENTS_PER_PROCESS];
+    struct event io_events[MAX_EVENTS_PER_PROCESS];
     int exit_time;
     int time_remaining;
-} tracefile_processes[MAX_PROCESSES];
+};
 
 struct qnode
 {
@@ -77,8 +77,9 @@ struct queue
 #define CHAR_COMMENT '#'
 #define MAXWORD 20
 
-void parse_tracefile(char program[], char tracefile[])
+void parse_tracefile(char program[], char tracefile[], struct device *d, struct process *p, struct event *e)
 {
+
     //  ATTEMPT TO OPEN OUR TRACEFILE, REPORTING AN ERROR IF WE CAN'T
     FILE *fp = fopen(tracefile, "r");
 
@@ -119,9 +120,9 @@ void parse_tracefile(char program[], char tracefile[])
         if (nwords == 4 && strcmp(word0, "device") == 0)
         // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
         {
-            tracefile_devices[l].name_pointer = strdup(word1);
-            tracefile_devices[l].bytes_per_sec = atoi(strdup(word2));
-            printf("%i\t%s\t%i\n", l, tracefile_devices[l].name_pointer, tracefile_devices[l].bytes_per_sec);
+            d[l].name_pointer = strdup(word1);
+            d[l].bytes_per_sec = atoi(strdup(word2));
+            printf("%i\t%s\t%i\n", l, d[l].name_pointer, d[l].bytes_per_sec);
             l++;
         }
 
@@ -133,9 +134,9 @@ void parse_tracefile(char program[], char tracefile[])
         else if (nwords == 4 && strcmp(word0, "process") == 0)
         {
             // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
-            tracefile_processes[m].id = atoi(strdup(word1));
-            tracefile_processes[m].start_time = atoi(strdup(word2));
-            printf("process id%i\tstart time%i\n", tracefile_processes[m].id, tracefile_processes[m].start_time);
+            p[m].id = atoi(strdup(word1));
+            p[m].start_time = atoi(strdup(word2));
+            printf("process id%i\tstart time%i\n", p[m].id, p[m].start_time);
             m++;
         }
 
@@ -143,20 +144,20 @@ void parse_tracefile(char program[], char tracefile[])
         {
             //  AN I/O EVENT FOR THE CURRENT PROCESS, STORE THIS SOMEWHERE
 
-            tracefile_processes[nprocess].tracefile_events[n].cpu_time = atoi(strdup(word1));
-            tracefile_processes[nprocess].tracefile_events[n].device = strdup(word2);
-            tracefile_processes[nprocess].tracefile_events[n].bytes_transfered = atoi(strdup(word3));
-            printf("%i\t%s\t%i\n", tracefile_processes[nprocess].tracefile_events[n].cpu_time,
-                   tracefile_processes[nprocess].tracefile_events[n].device,
-                   tracefile_processes[nprocess].tracefile_events[n].bytes_transfered);
+            p[nprocess].io_events[n].cpu_time = atoi(strdup(word1));
+            p[nprocess].io_events[n].device = strdup(word2);
+            p[nprocess].io_events[n].bytes_transfered = atoi(strdup(word3));
+            printf("%i\t%s\t%i\n", p[nprocess].io_events[n].cpu_time,
+                   p[nprocess].io_events[n].device,
+                   p[nprocess].io_events[n].bytes_transfered);
             n++;
         }
 
         else if (nwords == 2 && strcmp(word0, "exit") == 0)
         {
-            tracefile_processes[nprocess].exit_time = atoi(strdup(word1));
-            tracefile_processes[nprocess].time_remaining = atoi(strdup(word1));
-            printf("exit\t %i\n", tracefile_processes[nprocess].exit_time);
+            p[nprocess].exit_time = atoi(strdup(word1));
+            p[nprocess].time_remaining = atoi(strdup(word1));
+            printf("exit\t %i\n", p[nprocess].exit_time);
             nprocess++;
         }
 
@@ -178,7 +179,7 @@ void parse_tracefile(char program[], char tracefile[])
 //  ----------------------------------------------------------------------
 // ASSIGN DEVICE PRIORITY
 
-void device_priority_sort()
+void device_priority_sort(struct device *d)
 {
     int k, i, j;
     struct device temp;
@@ -188,11 +189,11 @@ void device_priority_sort()
     {
         for (j = 0; j < MAX_DEVICES - 1; j++)
         {
-            if (tracefile_devices[j].bytes_per_sec < tracefile_devices[j + 1].bytes_per_sec)
+            if (d[j].bytes_per_sec < d[j + 1].bytes_per_sec)
             {
-                temp = tracefile_devices[j];
-                tracefile_devices[j] = tracefile_devices[j + 1];
-                tracefile_devices[j + 1] = temp;
+                temp = d[j];
+                d[j] = d[j + 1];
+                d[j + 1] = temp;
             }
         }
     }
@@ -200,8 +201,8 @@ void device_priority_sort()
     // assign priority to tracefile_devices struct
     for (k = 0; k < MAX_DEVICES; k++)
     {
-        tracefile_devices[k].priority = k + 1;
-        printf("%i\t%s\n", tracefile_devices[k].priority, tracefile_devices[k].name_pointer);
+        d[k].priority = k + 1;
+        printf("%i\t%s\n", d[k].priority, d[k].name_pointer);
     }
 }
 
@@ -274,14 +275,14 @@ void sort_nodes_in_ready_queue_start_time(struct qnode *head)
 }
 
 // create READY queue and add processes to nodes
-struct queue *create_ready_queue()
+struct queue *create_ready_queue(struct process *p)
 {
     int i;
     struct queue *ready = create_queues();
     // loop through and create m (number of processes) nodes
     for (i = 0; i < m; i++)
     {
-        enqueue(ready, &tracefile_processes[i]);
+        enqueue(ready, &p[i]);
     }
     printf("Process %i and %i added \n", ready->head->id->id, ready->rear->id->id);
     //sort nodes: lowest start time at front of ready queue
@@ -300,7 +301,7 @@ int is_queue(struct queue *q)
 // THE CPU
 
 // check to see if context switch is required
-int is_context_switch(struct queue *q)
+int is_context_switch(struct queue *q, int total_process_completion_time)
 {
     struct process *temp;
     temp = q->head->id;
@@ -331,9 +332,17 @@ int is_process_exit(struct queue *q, int tq)
 }
 
 // calculate total completion time per time quantum
-int calculate_total_completion_time(int tq)
+int calculate_total_completion_time(char program[], char tracefile[], int tq)
 {
-    struct queue *q = create_ready_queue();
+    int total_process_completion_time = 0;
+    struct process tracefile_processes[MAX_PROCESSES];
+    struct device tracefile_devices[MAX_DEVICES];
+    struct event tracefile_events[MAX_EVENTS_PER_PROCESS];
+
+
+    parse_tracefile(program, tracefile, tracefile_devices, tracefile_processes, tracefile_events);
+    struct queue *q = create_ready_queue(tracefile_processes);
+
     total_process_completion_time = q->head->id->start_time + TIME_CONTEXT_SWITCH;
     while (is_queue(q))
     {
@@ -360,23 +369,22 @@ int calculate_total_completion_time(int tq)
                 q->head->id->time_remaining -= tq;
                 q->head->id->start_time += tq;
                 printf("3.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
-            } while (!is_context_switch(q));
+            } while (!is_context_switch(q, total_process_completion_time));
         }
     }
     printf("tct %i\n", total_process_completion_time);
-    return 0;
-
+    return total_process_completion_time;
 }
 
 // find the best total completion time per time quantum
-int find_best_time_quantum()
+int find_best_time_quantum(char program[], char tracefile[])
 {
     int best_tct[20];
 
     int n = 0, tq;
     for (tq = 100; tq <= 2000; tq = tq + 100)
     {
-        best_tct[n] = calculate_total_completion_time(tq);
+        best_tct[n] = calculate_total_completion_time(program, tracefile, tq);
         printf("tct is %i \n", best_tct[n]);
         n++;
     }
@@ -385,16 +393,10 @@ int find_best_time_quantum()
 
 void cpu_running()
 {
-
-find_best_time_quantum();
-
+;
 }
 
 int main(int argc, char *argv[])
 {
-    parse_tracefile(argv[0], argv[1]);
-    device_priority_sort();
-    calculate_total_completion_time(100);
-    calculate_total_completion_time(200);
-    calculate_total_completion_time(300);
+    find_best_time_quantum(argv[0], argv[1]);
 }
