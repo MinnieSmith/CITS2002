@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdbool.h>
+#include <math.h>
 
 /* CITS2002 Project 1 2019
    Name(s):             Minh Trang Smith
@@ -24,6 +26,10 @@
 #define TIME_CONTEXT_SWITCH 5
 #define TIME_ACQUIRE_BUS 5
 
+#define DEBUG_LOG(x, y)                        \
+    printf("\n[%s] -------------------\n", x); \
+    y printf("[%s] END ---------------\n\n", x)
+
 //  NOTE THAT DEVICE DATA-TRANSFER-RATES ARE MEASURED IN BYTES/SECOND,
 //  THAT ALL TIMES ARE MEASURED IN MICROSECONDS (usecs),
 //  AND THAT THE TOTAL-PROCESS-COMPLETION-TIME WILL NOT EXCEED 2000 SECONDS
@@ -37,25 +43,30 @@ struct device
     char *name_pointer;
     int bytes_per_sec;
     int priority;
-};
+} tracefile_devices[MAX_DEVICES];
 struct event
 {
-    int id;
+
     int cpu_time;
     int start_time;
+    int burst_time;
     char *device;
     int priority;
+    int bytes_per_sec;
     int bytes_transfered;
+    int event_process_time;
+    bool is_finished;
 };
 
 struct process
 {
     int id;
     int start_time;
+    int nevents;
     struct event io_events[MAX_EVENTS_PER_PROCESS];
     int exit_time;
     int time_remaining;
-};
+} tracefile_processes[MAX_PROCESSES];
 
 struct qnode
 {
@@ -68,6 +79,36 @@ struct queue
     struct qnode *head;
     struct qnode *rear;
 };
+
+//  ----------------------------------------------------------------------
+// ASSIGN DEVICE PRIORITY
+
+void device_priority_sort(struct device *d)
+{
+    int k, i, j;
+    struct device temp;
+    // sort device priority by transfer rate descending
+
+    for (i = 0; i < MAX_DEVICES; i++)
+    {
+        for (j = 0; j < MAX_DEVICES - 1; j++)
+        {
+            if (d[j].bytes_per_sec < d[j + 1].bytes_per_sec)
+            {
+                temp = d[j];
+                d[j] = d[j + 1];
+                d[j + 1] = temp;
+            }
+        }
+    }
+
+    // assign priority to tracefile_devices struct
+    for (k = 0; k < MAX_DEVICES; k++)
+    {
+        d[k].priority = k + 1;
+    }
+}
+
 
 //  ----------------------------------------------------------------------
 
@@ -121,7 +162,7 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
         {
             d[l].name_pointer = strdup(word1);
             d[l].bytes_per_sec = atoi(strdup(word2));
-            // printf("%i\t%s\t%i\n", l, d[l].name_pointer, d[l].bytes_per_sec);
+            printf("%i\t%s\t%i\n", l, d[l].name_pointer, d[l].bytes_per_sec);
             l++;
         }
 
@@ -135,24 +176,58 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
             // FOUND THE START OF A PROCESS'S EVENTS, STORE THIS SOMEWHERE
             p[m].id = atoi(strdup(word1));
             p[m].start_time = atoi(strdup(word2));
-            printf("process id%i\tstart time%i\n", p[m].id, p[m].start_time);
+            printf("process id %i\tstart time %i\n", p[m].id, p[m].start_time);
             m++;
         }
 
         else if (nwords == 4 && strcmp(word0, "i/o") == 0)
         {
             //  AN I/O EVENT FOR THE CURRENT PROCESS, STORE THIS SOMEWHERE
+            device_priority_sort(d);
 
-            p[nprocess].io_events[n].id = n + 1;
             p[nprocess].io_events[n].cpu_time = atoi(strdup(word1));
             p[nprocess].io_events[n].device = strdup(word2);
             p[nprocess].io_events[n].bytes_transfered = atoi(strdup(word3));
             p[nprocess].io_events[n].start_time = atoi(strdup(word1)) + p[nprocess].start_time;
+            p[nprocess].io_events[n].is_finished = false;
 
-            printf("%i\t%s\t%i\t%i\n", p[nprocess].io_events[n].cpu_time,
+            // calculate burst time
+            if (n == 0)
+            {
+                p[nprocess].io_events[n].burst_time = p[nprocess].io_events[n].cpu_time;
+            }
+            else
+            {
+                p[nprocess].io_events[n].burst_time = p[nprocess].io_events[n].cpu_time - p[nprocess].io_events[n - 1].cpu_time;
+            }
+
+            // assign device priority and transfer rate per io event
+            int i;
+            for (i =0; i< MAX_DEVICES; i++)
+            {
+                if(strcmp(p[nprocess].io_events[n].device, d[i].name_pointer) ==0)
+                {
+                    p[nprocess].io_events[n].priority = d[i].priority;
+                    p[nprocess].io_events[n].bytes_per_sec = d[i].bytes_per_sec;
+                    // DEBUG_LOG("DEVICE PRIORITY",
+                    //           printf("IO DEVICE: %s\n", p[nprocess].io_events[n].device);
+                    //           printf("IO TRANSFER RATE %d\n", p[nprocess].io_events[n].bytes_per_sec);
+                    //           printf("IO DEVICE PRIORITY: %i\n", p[nprocess].io_events[n].priority););
+                }
+            }
+
+            p[nprocess].io_events[n].event_process_time = 
+                ceil((p[nprocess].io_events[n].bytes_transfered *1000000)/p[nprocess].io_events[n].bytes_per_sec) + 
+                TIME_ACQUIRE_BUS + TIME_CONTEXT_SWITCH;
+            printf("\t\tbtran\tstart\tburst\tprctime\tfinished\n");
+            printf("%i\t%s\t%i\t%i\t%i\t%i\t", p[nprocess].io_events[n].cpu_time,
                    p[nprocess].io_events[n].device,
                    p[nprocess].io_events[n].bytes_transfered,
-                   p[nprocess].io_events[n].start_time);
+                   p[nprocess].io_events[n].start_time,
+                   p[nprocess].io_events[n].burst_time,
+                   p[nprocess].io_events[n].event_process_time);
+
+            printf(p[nprocess].io_events[n].is_finished ? "true\n" : "false\n");
             n++;
         }
 
@@ -160,8 +235,11 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
         {
             p[nprocess].exit_time = atoi(strdup(word1));
             p[nprocess].time_remaining = atoi(strdup(word1));
-            // printf("exit\t %i\n", p[nprocess].exit_time);
+            p[nprocess].nevents = n;
+            printf("number of io events is %i\n", p[nprocess].nevents);
+            printf("exit\t %i\n\n", p[nprocess].exit_time);
             nprocess++;
+            n = 0;
         }
 
         else if (nwords == 1 && strcmp(word0, "}") == 0)
@@ -178,36 +256,6 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
 
     fclose(fp);
     return nprocess;
-}
-
-//  ----------------------------------------------------------------------
-// ASSIGN DEVICE PRIORITY
-
-void device_priority_sort(struct device *d)
-{
-    int k, i, j;
-    struct device temp;
-    // sort device priority by transfer rate descending
-
-    for (i = 0; i < MAX_DEVICES; i++)
-    {
-        for (j = 0; j < MAX_DEVICES - 1; j++)
-        {
-            if (d[j].bytes_per_sec < d[j + 1].bytes_per_sec)
-            {
-                temp = d[j];
-                d[j] = d[j + 1];
-                d[j + 1] = temp;
-            }
-        }
-    }
-
-    // assign priority to tracefile_devices struct
-    for (k = 0; k < MAX_DEVICES; k++)
-    {
-        d[k].priority = k + 1;
-        printf("%i\t%s\n", d[k].priority, d[k].name_pointer);
-    }
 }
 
 //  ----------------------------------------------------------------------
@@ -231,12 +279,14 @@ struct qnode *create_nodes(struct process *id)
 }
 
 // add node to ready queue
-void enqueue(struct queue *q, struct process *id)
+void enqueue(struct queue *q, struct process *p)
 {
+
     // create a new node
-    struct qnode *temp = create_nodes(id);
+    struct qnode *temp = create_nodes(p);
+
     // if queue is empty, head and rear are the same
-    if (q->rear == NULL)
+    if (q->head == NULL)
     {
         q->head = q->rear = temp;
         return;
@@ -292,18 +342,17 @@ void sort_nodes_in_io_queue_start_time_and_priority(struct qnode *head)
                 i->id = j->id;
                 j->id = temp;
             }
-            printf("process %i io start time is %i and process %i io start time is %i \n", head->id->id, head->id->io_events->start_time,
-                   head->next->id->id, head->next->id->io_events->start_time);
-            // // if io event has same start time, sort in order of priority
-            // if (i->id->io_events[0].start_time == j->id->io_events[0].start_time)
-            // {
-            //     if (i->id->io_events->priority > j->id->io_events[0].start_time) //lower priority int == higher device priority
-            //     {
-            //         temp = i->id;
-            //         i->id = j->id;
-            //         j->id = temp;
-            //     }
-            // }
+
+            // if io event has same start time, sort in order of priority
+            if (i->id->io_events[0].start_time == j->id->io_events[0].start_time)
+            {
+                if (i->id->io_events->priority > j->id->io_events[0].start_time) //lower priority int == higher device priority
+                {
+                    temp = i->id;
+                    i->id = j->id;
+                    j->id = temp;
+                }
+            }
         }
     }
 }
@@ -313,12 +362,13 @@ struct queue *create_queue(struct process *p, int nprocess)
 {
     int i;
     struct queue *ready = create_queues();
+
     // loop through and create nprocess nodes
     for (i = 0; i < nprocess; i++)
     {
+
         enqueue(ready, &p[i]);
     }
-    printf("Process %i and %i added \n", ready->head->id->id, ready->rear->id->id);
     //sort nodes: lowest start time at front of ready queue
     sort_nodes_in_ready_queue_start_time(ready->head);
 
@@ -336,11 +386,13 @@ struct queue *create_io_event_queue(struct process *p, int nprocess)
 
         enqueue(io, &p[i]);
     }
-    printf("Process %i and %i added \n", io->head->id->id, io->rear->id->id);
-    printf("process %i io start time is %i and process %i io start time is %i \n", io->head->id->id, io->head->id->io_events->start_time,
-           io->head->next->id->id, io->head->next->id->io_events->start_time);
-    // sort_nodes_in_io_queue_start_time_and_priority(io->head);
 
+    // DEBUG_LOG("CREATE IO QUEUE Line 341",
+    //           printf("Process ID: %i\n", p->id);
+    //           printf("Process Start Time: %i\n", p->start_time);
+    //           printf("IO 1st Event Start Time: %i\n", p->io_events->start_time);
+    //           printf("IO 1st Event Device: %s\n", p->io_events->device););
+    sort_nodes_in_io_queue_start_time_and_priority(io->head);
     return io;
 }
 
@@ -379,18 +431,19 @@ int is_process_exit(struct queue *q, int tq)
     }
 }
 
+int is_io_event(struct queue *q)
+{
+    return 0;
+}
+
 // calculate total completion time per time quantum
 int calculate_total_completion_time(char program[], char tracefile[], int tq)
 {
     int total_process_completion_time = 0;
-    struct process tracefile_processes[MAX_PROCESSES];
-    struct device tracefile_devices[MAX_DEVICES];
 
     // create the ready queue
     struct queue *q = create_queue(tracefile_processes, parse_tracefile(program, tracefile, tracefile_devices, tracefile_processes));
-    struct queue *io = create_io_event_queue(tracefile_processes, parse_tracefile(program, tracefile, tracefile_devices, tracefile_processes));
-    printf("1.Process %i and %i is in the queue\n", q->head->id->id, q->head->next->id->id);
-    printf("2.Process %i and %i is in the queue\n", io->head->id->id, io->head->next->id->id);
+    // struct queue *io = create_io_event_queue(tracefile_processes, parse_tracefile(program, tracefile, tracefile_devices, tracefile_processes));
 
     if (is_queue(q))
     {
@@ -408,7 +461,7 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
                 total_process_completion_time += tq;
                 q->head->id->time_remaining -= tq;
                 q->head->id->start_time += tq;
-                printf("1.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+                // printf("1.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
                 // check if there is a context switch or process exit
             } while (!is_context_switch(q) && !is_process_exit(q, tq));
 
@@ -418,7 +471,7 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
                 total_process_completion_time += tq + TIME_CONTEXT_SWITCH;
                 q->head->id->time_remaining -= tq;
                 q->head->id->start_time += tq + TIME_CONTEXT_SWITCH;
-                printf("2.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+                // printf("2.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
             }
         }
         else if (is_process_exit(q, tq))
@@ -468,5 +521,10 @@ int find_best_time_quantum(char program[], char tracefile[])
 int main(int argc, char *argv[])
 {
 
-    find_best_time_quantum(argv[0], argv[1]);
+    calculate_total_completion_time(argv[0], argv[1], 100);
 }
+
+// DEBUG_LOG("CREATE QUEUE Line 398",
+//           printf("Process ID: %i\n", io->head->id->id);
+//           printf("IO 2nd Event Burst Time: %i\n", io->head->id->io_events[1].burst_time);
+//           printf("IO 2nd Event Start Time: %i\n", io->head->id->io_events[1].start_time););
