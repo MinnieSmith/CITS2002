@@ -109,7 +109,6 @@ void device_priority_sort(struct device *d)
     }
 }
 
-
 //  ----------------------------------------------------------------------
 
 #define CHAR_COMMENT '#'
@@ -188,7 +187,7 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
             p[nprocess].io_events[n].cpu_time = atoi(strdup(word1));
             p[nprocess].io_events[n].device = strdup(word2);
             p[nprocess].io_events[n].bytes_transfered = atoi(strdup(word3));
-            p[nprocess].io_events[n].start_time = atoi(strdup(word1)) + p[nprocess].start_time;
+            p[nprocess].io_events[n].start_time = atoi(strdup(word1)) + p[nprocess].start_time + TIME_CONTEXT_SWITCH;
             p[nprocess].io_events[n].is_finished = false;
 
             // calculate burst time
@@ -203,9 +202,9 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
 
             // assign device priority and transfer rate per io event
             int i;
-            for (i =0; i< MAX_DEVICES; i++)
+            for (i = 0; i < MAX_DEVICES; i++)
             {
-                if(strcmp(p[nprocess].io_events[n].device, d[i].name_pointer) ==0)
+                if (strcmp(p[nprocess].io_events[n].device, d[i].name_pointer) == 0)
                 {
                     p[nprocess].io_events[n].priority = d[i].priority;
                     p[nprocess].io_events[n].bytes_per_sec = d[i].bytes_per_sec;
@@ -216,8 +215,8 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
                 }
             }
 
-            p[nprocess].io_events[n].event_process_time = 
-                ceil((p[nprocess].io_events[n].bytes_transfered *1000000)/p[nprocess].io_events[n].bytes_per_sec) + 
+            p[nprocess].io_events[n].event_process_time =
+                ceil((p[nprocess].io_events[n].bytes_transfered * 1000000) / p[nprocess].io_events[n].bytes_per_sec) +
                 TIME_ACQUIRE_BUS + TIME_CONTEXT_SWITCH;
             printf("\t\tbtran\tstart\tburst\tprctime\tfinished\n");
             printf("%i\t%s\t%i\t%i\t%i\t%i\t", p[nprocess].io_events[n].cpu_time,
@@ -460,25 +459,50 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
             {
                 total_process_completion_time += tq;
                 q->head->id->time_remaining -= tq;
-                q->head->id->start_time += tq;
-                // printf("1.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+                q->head->id->start_time = total_process_completion_time;
+                DEBUG_LOG("CPU NO CONTEXT SWITCH Line 463",
+                          printf("P%i\n", q->head->id->id);
+                          printf("TCT: %i\n", total_process_completion_time);
+                          printf("TR: %i\n", q->head->id->time_remaining);
+                          printf("START TIME: %i\n", q->head->id->start_time););
+
                 // check if there is a context switch or process exit
             } while (!is_context_switch(q) && !is_process_exit(q, tq));
 
             while (is_context_switch(q) && !is_process_exit(q, tq))
             {
-                // execute for another process for 1 tq
-                total_process_completion_time += tq + TIME_CONTEXT_SWITCH;
-                q->head->id->time_remaining -= tq;
-                q->head->id->start_time += tq + TIME_CONTEXT_SWITCH;
-                // printf("2.Process %i is executed and total completion time is %i \n", q->head->id->id, total_process_completion_time);
+                if (q->head->id->start_time > total_process_completion_time)
+                {
+                    total_process_completion_time = q->head->id->start_time + TIME_CONTEXT_SWITCH + tq;
+                    q->head->id->time_remaining -= tq;
+                    q->head->id->start_time = total_process_completion_time;
+                }
+                else
+                {
+                    total_process_completion_time += tq + TIME_CONTEXT_SWITCH;
+                    q->head->id->time_remaining -= tq;
+                    q->head->id->start_time = total_process_completion_time;
+                }
+                DEBUG_LOG("CPU CONTEXT SWITCH Line 477",
+                          printf("P%i\n", q->head->id->id);
+                          printf("TCT: %i\n", total_process_completion_time);
+                          printf("TR: %i\n", q->head->id->time_remaining);
+                          printf("START TIME: %i\n", q->head->id->start_time = tq););
             }
         }
         else if (is_process_exit(q, tq))
         {
             total_process_completion_time += q->head->id->time_remaining;
-            printf("2.Process %i is completed\n", q->head->id->id);
+
+            DEBUG_LOG("PROCESS EXIT Line 487",
+                      printf("TCT: %i\n", total_process_completion_time);
+                      printf("TR: %i\n", q->head->id->time_remaining);
+                      printf("START TIME: %i\n", q->head->id->start_time += tq);
+                      printf("PROCESS %i COMPLETED\n", q->head->id->id););
             dequeue(q);
+            total_process_completion_time += TIME_CONTEXT_SWITCH;
+            DEBUG_LOG("PROCESS EXIT Line 503",
+                      printf("TCT: %i\n", total_process_completion_time););
         }
         else
         {
