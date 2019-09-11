@@ -457,9 +457,18 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
             //execute for 1 tq
             do
             {
-                total_process_completion_time += tq;
-                q->head->id->time_remaining -= tq;
-                q->head->id->start_time = total_process_completion_time;
+                if (q->head->id->start_time > total_process_completion_time)
+                {
+                    total_process_completion_time = q->head->id->start_time + tq;
+                    q->head->id->time_remaining -= tq;
+                    q->head->id->start_time = total_process_completion_time;
+                }
+                else
+                {
+                    total_process_completion_time += tq;
+                    q->head->id->time_remaining -= tq;
+                    q->head->id->start_time = total_process_completion_time;
+                }
                 DEBUG_LOG("CPU NO CONTEXT SWITCH Line 463",
                           printf("P%i\n", q->head->id->id);
                           printf("TCT: %i\n", total_process_completion_time);
