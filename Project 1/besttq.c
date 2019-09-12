@@ -612,29 +612,30 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
 int find_best_time_quantum(char program[], char tracefile[], char *tq, char *maxtq, char *increment)
 {
 
-    int n = 0, i=0;
+    int n = 0, i = 0;
     int tq_int = atoi(tq);
     int maxtq_int = atoi(maxtq);
     int increment_int = atoi(increment);
-    int best_tct[maxtq_int/increment_int];
-
+    int size = ((maxtq_int -tq_int) / increment_int) +1;
+    int best_tct[size];
     int optimal_time_quantum = tq_int;
+
     int min = calculate_total_completion_time(program, tracefile, tq_int);
     DEBUG_LOG("BEST TIME QUANTUM LINE 594",
               printf("MIN: %i\n", min););
 
-    for (i = tq_int; i <= maxtq_int; i = i+ increment_int)
+    for (i = tq_int; i <= maxtq_int; i = i + increment_int)
     {
-        best_tct[n] = calculate_total_completion_time(program, tracefile, tq_int);
+        best_tct[n] = calculate_total_completion_time(program, tracefile, i);
 
         if (min > best_tct[n])
         {
             min = best_tct[n];
-            optimal_time_quantum = tq_int;
+            optimal_time_quantum = i;
         }
         n++;
     }
-    printf("best %i %i\n", optimal_time_quantum, min);
+    printf("best total process completion time is %i and the optimal time quantum %i\n", min, optimal_time_quantum);
     return 0;
 }
 
