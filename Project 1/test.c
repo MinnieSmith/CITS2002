@@ -217,7 +217,7 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
             }
 
             p[nprocess].io_events[n].event_process_time =
-                ceil((p[nprocess].io_events[n].bytes_transfered * 1000000) / p[nprocess].io_events[n].bytes_per_sec) +
+                ceil(p[nprocess].io_events[n].bytes_transfered * 1000000/ p[nprocess].io_events[n].bytes_per_sec) +
                 TIME_ACQUIRE_BUS + TIME_CONTEXT_SWITCH;
             printf("\t\tbtran\tstart\tburst\tprctime\tfinished\n");
             printf("%i\t%s\t%i\t%i\t%i\t%i\t", p[nprocess].io_events[n].cpu_time,
@@ -453,10 +453,11 @@ int find_event_index_not_finished(struct queue *q)
 int calculate_total_completion_time(char program[], char tracefile[], int tq)
 {
     int total_process_completion_time = 0;
+    int first_process_start_time = 0;
 
     // create the ready queue and io queue
     struct queue *q = create_queue(tracefile_processes, parse_tracefile(program, tracefile, tracefile_devices, tracefile_processes));
-    // struct queue *io = create_io_event_queue(tracefile_processes, parse_tracefile(program, tracefile, tracefile_devices, tracefile_processes));
+    first_process_start_time = q->head->id->start_time;
 
     //check if there are processes in the READY queue
     if (is_queue(q))
@@ -465,22 +466,22 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
         q->head->id->start_time += TIME_CONTEXT_SWITCH;
     }
 
+
     while (is_queue(q))
     {
         // if process has io event and burst time is less than tq
 
         if (q->head->id->nevents_not_finished > 0 && (q->head->id->io_events[find_event_index_not_finished(q)].burst_time <= tq))
         {
-            DEBUG_LOG("BT LINE 476",
-                      printf("Process ID: %i\n", q->head->id->id);
-                      printf("Process TCT: %i\n", total_process_completion_time);
-                      printf("BURST TIME: %i\n", q->head->id->io_events[find_event_index_not_finished(q)].burst_time););
+
             if (q->head->id->start_time > total_process_completion_time)
             {
                 total_process_completion_time = q->head->id->start_time;
             }
-            DEBUG_LOG("TCT = ST IF TCT < ST LINE 482",
-                      printf("Process ID: %i\n", q->head->id->id);
+            DEBUG_LOG("TCT = ST IF TCT < ST LINE 479",
+                      printf("ID: %i\n", q->head->id->id);
+                      printf("ST: %i\n", q->head->id->start_time);
+                      printf("BURST TIME: %i\n", q->head->id->io_events[find_event_index_not_finished(q)].burst_time);
                       printf("Process TCT: %i\n", total_process_completion_time););
 
             int index = find_event_index_not_finished(q);
@@ -491,11 +492,10 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
             q->head->id->nevents_not_finished -= 1;
             DEBUG_LOG("IF IO EVENT AND BT <= TQ LINE 480",
                       printf("Process ID: %i\n", q->head->id->id);
-                      printf("INDEX %i\n", index);
                       printf("IO PROCESSING TIME %i\n", q->head->id->io_events[index].event_process_time);
                       printf("TCT: %i\n", total_process_completion_time);
                       printf("TR: %i\n", q->head->id->time_remaining);
-                      printf("START TIME: %i\n", q->head->id->start_time););
+                      printf("START TIME AFTER IO: %i\n", q->head->id->start_time););
             if (is_context_switch(q))
             {
                 total_process_completion_time += TIME_CONTEXT_SWITCH;
@@ -546,6 +546,11 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
         // if process has no io event and time remaining is less than 1 tq
         else if (q->head->id->nevents_not_finished == 0 && (q->head->id->time_remaining <= tq))
         {
+            if (q->head->id->start_time > total_process_completion_time)
+            {
+                total_process_completion_time = q->head->id->start_time;
+            }
+
             total_process_completion_time += q->head->id->time_remaining;
 
             DEBUG_LOG("PROCESS EXIT LINE 535",
@@ -569,13 +574,13 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
         }
     }
 
-    printf("tct %i\n\n", total_process_completion_time);
+    printf("tct %i\n\n", total_process_completion_time - first_process_start_time);
     q->head = NULL;
     q->rear = NULL;
 
     free(q);
 
-    return total_process_completion_time;
+    return (total_process_completion_time - first_process_start_time);
 }
 
 // find the best total completion time per time quantum
@@ -586,15 +591,20 @@ int find_best_time_quantum(char program[], char tracefile[])
     int n = 0, tq;
     int optimal_time_quantum = 0;
     int min = calculate_total_completion_time(program, tracefile, 100);
+             DEBUG_LOG("BEST TIME QUANTUM LINE 594",
+                      printf("MIN: %i\n", min););
     for (tq = 100; tq <= 2000; tq = tq + 100)
     {
+
         best_tct[n] = calculate_total_completion_time(program, tracefile, tq);
-        if (best_tct[n] < min)
+         DEBUG_LOG("BEST TIME QUANTUM LINE 598",
+                      printf("TCT: %i\n", best_tct[n]););
+        if (min > best_tct[n])
         {
             min = best_tct[n];
             optimal_time_quantum = tq;
         }
-        printf("best tct is %i at %i tq \n", min, optimal_time_quantum);
+        printf("best total process completion time is %i and the optimal time quantum %i\n", min, optimal_time_quantum);
         n++;
     }
     return 0;
@@ -605,5 +615,5 @@ int find_best_time_quantum(char program[], char tracefile[])
 int main(int argc, char *argv[])
 {
 
-    calculate_total_completion_time(argv[0], argv[1], 100);
+    find_best_time_quantum(argv[0], argv[1]);
 }
