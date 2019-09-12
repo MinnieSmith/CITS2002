@@ -209,15 +209,11 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
                 {
                     p[nprocess].io_events[n].priority = d[i].priority;
                     p[nprocess].io_events[n].bytes_per_sec = d[i].bytes_per_sec;
-                    // DEBUG_LOG("DEVICE PRIORITY",
-                    //           printf("IO DEVICE: %s\n", p[nprocess].io_events[n].device);
-                    //           printf("IO TRANSFER RATE %d\n", p[nprocess].io_events[n].bytes_per_sec);
-                    //           printf("IO DEVICE PRIORITY: %i\n", p[nprocess].io_events[n].priority););
                 }
             }
 
             p[nprocess].io_events[n].event_process_time =
-                ceil(p[nprocess].io_events[n].bytes_transfered * 1000000/ p[nprocess].io_events[n].bytes_per_sec) +
+                ceil(p[nprocess].io_events[n].bytes_transfered * 1000000.00 / p[nprocess].io_events[n].bytes_per_sec) +
                 TIME_ACQUIRE_BUS + TIME_CONTEXT_SWITCH;
             printf("\t\tbtran\tstart\tburst\tprctime\tfinished\n");
             printf("%i\t%s\t%i\t%i\t%i\t%i\t", p[nprocess].io_events[n].cpu_time,
@@ -466,7 +462,6 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
         q->head->id->start_time += TIME_CONTEXT_SWITCH;
     }
 
-
     while (is_queue(q))
     {
         // if process has io event and burst time is less than tq
@@ -574,39 +569,39 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
         }
     }
 
-    printf("tct %i\n\n", total_process_completion_time - first_process_start_time);
+    total_process_completion_time -= first_process_start_time;
     q->head = NULL;
     q->rear = NULL;
 
     free(q);
-
-    return (total_process_completion_time - first_process_start_time);
+    DEBUG_LOG("BEST TCT LINE 577",
+              printf("TCT: %i\n", total_process_completion_time););
+    return total_process_completion_time;
 }
 
 // find the best total completion time per time quantum
 int find_best_time_quantum(char program[], char tracefile[])
 {
+
     int best_tct[20];
-
-    int n = 0, tq;
-    int optimal_time_quantum = 0;
+    int n = 0, tq = 100;
+    int optimal_time_quantum = 100;
     int min = calculate_total_completion_time(program, tracefile, 100);
-             DEBUG_LOG("BEST TIME QUANTUM LINE 594",
-                      printf("MIN: %i\n", min););
-    for (tq = 100; tq <= 2000; tq = tq + 100)
-    {
+    DEBUG_LOG("BEST TIME QUANTUM LINE 594",
+              printf("MIN: %i\n", min););
 
+    for (tq = 100; tq <= 1000; tq = tq + 100)
+    {
         best_tct[n] = calculate_total_completion_time(program, tracefile, tq);
-         DEBUG_LOG("BEST TIME QUANTUM LINE 598",
-                      printf("TCT: %i\n", best_tct[n]););
+
         if (min > best_tct[n])
         {
             min = best_tct[n];
             optimal_time_quantum = tq;
         }
-        printf("best total process completion time is %i and the optimal time quantum %i\n", min, optimal_time_quantum);
         n++;
     }
+    printf("best total process completion time is %i and the optimal time quantum %i\n", min, optimal_time_quantum);
     return 0;
 }
 
