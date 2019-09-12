@@ -595,8 +595,3 @@ int main(int argc, char *argv[])
 
     calculate_total_completion_time(argv[0], argv[1], 100);
 }
-
-// DEBUG_LOG("CREATE QUEUE Line 398",
-//           printf("Process ID: %i\n", io->head->id->id);
-//           printf("IO 2nd Event Burst Time: %i\n", io->head->id->io_events[1].burst_time);
-//           printf("IO 2nd Event Start Time: %i\n", io->head->id->io_events[1].start_time););

@@ -63,6 +63,7 @@ struct process
     int id;
     int start_time;
     int nevents;
+    int nevents_not_finished;
     struct event io_events[MAX_EVENTS_PER_PROCESS];
     int exit_time;
     int time_remaining;
@@ -235,6 +236,7 @@ int parse_tracefile(char program[], char tracefile[], struct device *d, struct p
             p[nprocess].exit_time = atoi(strdup(word1));
             p[nprocess].time_remaining = atoi(strdup(word1));
             p[nprocess].nevents = n;
+            p[nprocess].nevents_not_finished = n;
             printf("number of io events is %i\n", p[nprocess].nevents);
             printf("exit\t %i\n\n", p[nprocess].exit_time);
             nprocess++;
@@ -411,8 +413,12 @@ int is_context_switch(struct queue *q)
     if (q->head->id != temp)
     {
         printf("Process %i and %i sorted \n", q->head->id->id, q->rear->id->id);
+        return 1;
     }
-    return 1;
+    else
+    {
+        return 0;
+    }
 }
 
 int is_process_exit(struct queue *q, int tq)
@@ -459,30 +465,34 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
         q->head->id->start_time += TIME_CONTEXT_SWITCH;
     }
 
-
     while (is_queue(q))
     {
         // if process has io event and burst time is less than tq
 
-        if (q->head->id->nevents > 0 && (q->head->id->io_events[find_event_index_not_finished(q)].burst_time <= tq))
+        if (q->head->id->nevents_not_finished > 0 && (q->head->id->io_events[find_event_index_not_finished(q)].burst_time <= tq))
         {
             DEBUG_LOG("BT LINE 476",
                       printf("Process ID: %i\n", q->head->id->id);
+                      printf("Process TCT: %i\n", total_process_completion_time);
                       printf("BURST TIME: %i\n", q->head->id->io_events[find_event_index_not_finished(q)].burst_time););
             if (q->head->id->start_time > total_process_completion_time)
             {
                 total_process_completion_time = q->head->id->start_time;
             }
+            DEBUG_LOG("TCT = ST IF TCT < ST LINE 482",
+                      printf("Process ID: %i\n", q->head->id->id);
+                      printf("Process TCT: %i\n", total_process_completion_time););
 
             int index = find_event_index_not_finished(q);
             total_process_completion_time += q->head->id->io_events[index].burst_time;
             q->head->id->start_time = total_process_completion_time + q->head->id->io_events[index].event_process_time;
             q->head->id->time_remaining -= q->head->id->io_events[index].burst_time;
             q->head->id->io_events[index].is_finished = true;
-            q->head->id->nevents -= 1;
-            DEBUG_LOG("IF IO EVENT AND BT < TQ LINE 480",
+            q->head->id->nevents_not_finished -= 1;
+            DEBUG_LOG("IF IO EVENT AND BT <= TQ LINE 480",
                       printf("Process ID: %i\n", q->head->id->id);
                       printf("INDEX %i\n", index);
+                      printf("IO PROCESSING TIME %i\n", q->head->id->io_events[index].event_process_time);
                       printf("TCT: %i\n", total_process_completion_time);
                       printf("TR: %i\n", q->head->id->time_remaining);
                       printf("START TIME: %i\n", q->head->id->start_time););
@@ -494,7 +504,7 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
             }
         }
         // if process has io event and burst time is greater than 1 tq
-        else if (q->head->id->nevents > 0 && (q->head->id->io_events[find_event_index_not_finished(q)].burst_time > tq))
+        else if (q->head->id->nevents_not_finished > 0 && (q->head->id->io_events[find_event_index_not_finished(q)].burst_time > tq))
         {
             int index = find_event_index_not_finished(q);
             total_process_completion_time += tq;
@@ -515,7 +525,7 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
             }
         }
         // if process has no io event and time remaining is greater than 1 tq
-        else if (q->head->id->nevents == 0 && (q->head->id->time_remaining > tq))
+        else if (q->head->id->nevents_not_finished == 0 && (q->head->id->time_remaining > tq))
         {
             total_process_completion_time += tq;
             q->head->id->start_time = total_process_completion_time;
@@ -534,7 +544,7 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
             }
         }
         // if process has no io event and time remaining is less than 1 tq
-        else if (q->head->id->nevents == 0 && (q->head->id->time_remaining <= tq))
+        else if (q->head->id->nevents_not_finished == 0 && (q->head->id->time_remaining <= tq))
         {
             total_process_completion_time += q->head->id->time_remaining;
 
@@ -543,8 +553,10 @@ int calculate_total_completion_time(char program[], char tracefile[], int tq)
                       printf("PROCESS %i COMPLETED\n", q->head->id->id););
 
             dequeue(q);
-
-            total_process_completion_time += TIME_CONTEXT_SWITCH;
+            if (q->head != NULL)
+            {
+                total_process_completion_time += TIME_CONTEXT_SWITCH;
+            }
 
             DEBUG_LOG("PROCESS EXIT Line 543",
                       printf("TCT: %i\n", total_process_completion_time););
