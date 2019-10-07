@@ -33,6 +33,7 @@ int SIFS_mkdir(const char *volumename, const char *dirname)
         if (fp == NULL)
         {
             SIFS_errno = SIFS_ENOVOL;
+            return 1;
         }
 
 
@@ -44,55 +45,81 @@ int SIFS_mkdir(const char *volumename, const char *dirname)
         printf("%i, %zu \n", nblocks, hd.blocksize);
         
 
-        // // CHECK TO SEE IF DIRECTORY ALREADY EXISTS
-        // fread(&db, sizeof(SIFS_DIRBLOCK), 1, fp);
-        // if (strcmp(db.name, dirname) == 0)
-        //     SIFS_errno = SIFS_EEXIST;
-
         // SIFS_DIRBLOCK root;
         SIFS_BIT btmp[nblocks];
         int free_block_index = 0;
        
         // FIND THE INDEX OF THE FIRST FREE BLOCK
         fread(&btmp, sizeof(btmp), 1, fp);
+        // printf("Bitmap: %s\n", btmp);
+        // printf("Number of blocks %i\n", nblocks);
         
         for (int b=1; b<(nblocks-1); ++b)
             {
-                if(btmp[b] == 'u')
-                    memset(fp, 'd', sizeof(SIFS_BIT));
+                // printf("Inloop: %c, %i\n", btmp[b], b);
+                
+                if(btmp[b] == SIFS_UNUSED)
+                {
+                    printf("%c\n", btmp[b]);
                     free_block_index = b;
                     break;
+                }
             }
             printf("%i\n", free_block_index);        
         
+        // FIND THE BLOCK NUMBER OF ALL THE DIRECTORIES IN FILE
+        int dir_block_number [nblocks];
 
-        // FIND THE POSITION OF THE START OF FIRST DIRECTORY
+        for (int b=1; b<(nblocks-1); ++b)
+            {
+                int i = 0;
+                if(btmp[b] == SIFS_DIR)
+                {
+                    dir_block_number[i] = b;
+                    i++;
+                }
+            }
         
+        // TODO: CHECK TO SEE IF DIRECTORY NAME ALREADY EXISTS
+        // fread(&db, sizeof(SIFS_DIRBLOCK), 1, fp);
+        // if (strcmp(db.name, dirname) == 0)
+        //     SIFS_errno = SIFS_EEXIST;
 
 
+
+        //  UPDATE BITMAP
+        btmp[free_block_index] = SIFS_DIR;
+        fseek(fp, sizeof(SIFS_VOLUME_HEADER), SEEK_SET);
+        fwrite(btmp, sizeof(btmp), 1, fp);
 
         //  CREATE DIRECTORY
-        SIFS_DIRBLOCK dirname;
-        // char oneblock[blocksize];
-        
-        //  UPDATE BITMAP USING MEMSET()
-        // // btmp[free_block_index] = SIFS_DIR;
-        // fseek(fp, 20, SEEK_SET);
-        // fwrite(btmp, sizeof(btmp), 1, fp);
+        SIFS_DIRBLOCK newdir;
+        char oneblock[blocksize];
 
         // UPDATE VOLUME WITH NEW DIRECTORY
+        strcpy(newdir.name, dirname);
+        newdir.modtime = time(NULL);
+        newdir.nentries = 0;
 
-        dirname.modtime = time(NULL);
-        dirname.nentries = 1;
+        int newdir_location = 0;
+        newdir_location = sizeof(SIFS_VOLUME_HEADER) + sizeof(btmp) + (free_block_index * sizeof(oneblock));
 
-        // memcpy(oneblock, &dirname, sizeof dirname);
+        fseek(fp, newdir_location, SEEK_SET);
+        fwrite(&newdir, sizeof(oneblock), 1, fp);
+
+    
 
 
         fclose(fp);
+        return 0;
 
 
 
     }
-
-    return 0;
+    else
+    {
+        SIFS_errno = SIFS_ENOENT;
+        return 1;
+    }
+    
 }
