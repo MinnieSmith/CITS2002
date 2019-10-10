@@ -3,7 +3,7 @@ PROJECT		= sifs
 HEADER		= $(PROJECT).h
 LIBRARY		= lib$(PROJECT).a
 
-APPLICATIONS	= sifs_mkvolume sifs_dirinfo sifs_mkdir
+APPLICATIONS	= sifs_mkvolume sifs_dirinfo sifs_mkdir sifs_rmdir
 
 # ----------------------------------------------------------------
 
@@ -24,4 +24,3 @@ $(LIBRARY):
 clean:
 	rm -f $(LIBRARY) $(APPLICATIONS)
 	make -C library clean
-
