@@ -253,10 +253,18 @@ int SIFS_mkdir(const char *volumename, const char *dirname)
             int root_location = sizeof(hd) + sizeof(btmp);
             fseek(fp, root_location, SEEK_SET);
             fread(&dirblocks, sizeof(dirblocks), 1, fp);
-            dirblocks.entries[dirblocks.nentries].blockID = free_block_index;
-            dirblocks.nentries += 1;
-            fseek(fp, root_location, SEEK_SET);
-            fwrite(&dirblocks, sizeof(dirblocks), 1, fp);
+            if (dirblocks.nentries == SIFS_MAX_ENTRIES)
+            {
+                SIFS_errno = SIFS_EMAXENTRY;
+                return 1;
+            }
+            else
+            {
+                dirblocks.entries[dirblocks.nentries].blockID = free_block_index;
+                dirblocks.nentries += 1;
+                fseek(fp, root_location, SEEK_SET);
+                fwrite(&dirblocks, sizeof(dirblocks), 1, fp);
+            }
         }
 
         // UPDATE ENTRY ON SUBDIRECTORY
@@ -272,11 +280,13 @@ int SIFS_mkdir(const char *volumename, const char *dirname)
                 SIFS_errno = SIFS_EMAXENTRY;
                 return 1;
             }
-
-            subdir_to_be_updated.entries[subdir_to_be_updated.nentries].blockID = free_block_index;
-            subdir_to_be_updated.nentries += 1; // update number of entries
-            fseek(fp, subdir_to_be_updated_location, SEEK_SET);
-            fwrite(&subdir_to_be_updated, sizeof(subdir_to_be_updated), 1, fp);
+            else
+            {
+                subdir_to_be_updated.entries[subdir_to_be_updated.nentries].blockID = free_block_index;
+                subdir_to_be_updated.nentries += 1; // update number of entries
+                fseek(fp, subdir_to_be_updated_location, SEEK_SET);
+                fwrite(&subdir_to_be_updated, sizeof(subdir_to_be_updated), 1, fp);
+            }
         }
         fclose(fp);
         return 0;
