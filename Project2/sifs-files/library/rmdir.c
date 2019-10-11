@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <stdbool.h>
 
 #include "sifs-internal.h"
 
@@ -46,7 +47,6 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
         int free_block_index = 0;
 
         fread(&btmp, sizeof(btmp), 1, fp);
-        printf("Bitmap: %s\n", btmp);
 
         for (int b = 1; b < nblocks; ++b)
         {
@@ -65,7 +65,6 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
             SIFS_errno = SIFS_ENOSPC;
             return 1;
         }
-        printf("free block index %i\n", free_block_index);
 
         // REMOVE ANY '/' FROM PATHNAME
         char *path_tokens[nblocks * SIFS_MAX_NAME_LENGTH];
@@ -144,16 +143,18 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
         int dir_block_number[ndir];
 
         int n = 0;
+        printf("Bitmap: %s\n", btmp);
 
         for (int b = 0; b < nblocks; ++b)
         {
             if (btmp[b] == SIFS_DIR)
             {
                 dir_block_number[n] = b;
+                printf("Directory block number: %i\n", dir_block_number[n]);
+                n++;
             }
-            printf("Directory block number: %i\n", dir_block_number[n]);
-            n++;
         }
+        printf("number of directories (n) = %i\n", n);
 
         // CHECK IF SUBDIRECTORY EXISTS
         int subdir_block_id[t - 1];
@@ -172,12 +173,14 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
                     if (strcmp(dirblocks.name, path_tokens[token]) == 0)
                     {
                         subdir_block_id[s] = dir_block_number[i];
-                        printf("s= %i\n", subdir_block_id[s]);
+                        printf("Subdir block location: %i\n", subdir_block_id[s]);
                         s++;
                     }
                     token++;
                 } while (token < (t - 1));
             }
+            printf("Number of subdir: %i\n", s);
+
             if (s < (t - 1))
             {
                 SIFS_errno = SIFS_EINVAL;
@@ -187,7 +190,7 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
         }
 
         // CHECK IF PATH IS VALID
-        printf("CHECK IF PATH IS VALID\n");
+        printf("194 CHECK IF PATH IS VALID\n\n");
         if (t > 2)
         {
             for (int i = 0; i < (s - 1); ++i)
@@ -212,11 +215,11 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
         }
 
         // CHECK IF DIRECTORY NAME EXISTS
-        printf("CHECK IF DIRECTORY NAME EXISTS\n");
+        printf("219 CHECK IF DIRECTORY NAME EXISTS\n\n");
+        bool dirname_exists = false;
         char oneblock[blocksize];
-        for (int i = 0; i < nblocks; i++)
+        for (int i = 0; i < ndir; i++)
         {
-            printf("dirblock number = %i\n", dir_block_number[i]);
             int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[i]);
             fseek(fp, dir_location, SEEK_SET);
             fread(&dirblocks, sizeof(dirblocks), 1, fp);
@@ -224,31 +227,32 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
             if (strcmp(dirblocks.name, path_tokens[t - 1]) == 0)
             {
                 //CHECK IF DIRECTORY IS EMPTY REMOVE DIRECTORY AND UPDATE BITMAP
-                printf("CHECK IF DIRECTORY IS EMPTY REMOVE DIRECTORY AND UPDATE BITMAP\n");
+                dirname_exists = true;
+                printf("230 CHECK IF DIRECTORY IS EMPTY REMOVE DIRECTORY AND UPDATE BITMAP\n\n");
                 if (dirblocks.nentries == 0)
                 {
                     printf("DIRBLOCK ENTRY = 0\n");
                     fseek(fp, dir_location, SEEK_SET);
                     memset(oneblock, 0, sizeof(oneblock));   // reset block to zero
                     btmp[dir_block_number[i]] = SIFS_UNUSED; // update bitmap
+                    printf("Bitmap: %s\n", btmp);
                     fseek(fp, sizeof(hd), SEEK_SET);
                     fwrite(btmp, sizeof(btmp), 1, fp);
 
                     // UPDATE THE ROOT
                     if (t == 1)
                     {
-                        printf("UPDATE THE ROOT\n");
+                        printf("244 UPDATE THE ROOT\n\n");
                         int root_location = sizeof(hd) + sizeof(btmp);
                         fseek(fp, root_location, SEEK_SET);
                         fread(&dirblocks, sizeof(dirblocks), 1, fp);
-                        // FIND THE ENTRY NUMBER THAT CONTAINS THE BLOCK ID OF DELETED DIR
-                        printf("FIND THE ENTRY NUMBER THAT CONTAINS THE BLOCK ID OF DELETED DIR\n");
+                        // FIND THE ENTRY NUMBER
+                        printf("249 FIND THE ENTRY NUMBER IN ROOT TO BE DELETED\n\n");
                         for (int j = 0; j < nblocks; ++j)
                         {
-                            printf("DIRBLOCK NUMBER = %i\n", dir_block_number[j]);
                             if (dirblocks.entries[j].blockID == dir_block_number[i])
                             {
-                                printf("ENTRY LOCATION = %i\n", j);
+                                printf("254 ENTRY LOCATION = %i\n", j);
                                 if (j < (dirblocks.nentries - 1))
                                 {
                                     dirblocks.entries[j] = dirblocks.entries[dirblocks.nentries - 1];
@@ -259,8 +263,8 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
                                 }
                             }
                         }
-                        // UPDATE NUMBER OF ENTRIES
-                        printf("UPDATE NUMBER OF ENTRIES\n");
+                        // UPDATE NUMBER OF ENTRIES IN ROOT
+                        printf("266 UPDATE NUMBER OF ENTRIES IN ROOT\n\n");
                         dirblocks.nentries -= 1;
                         fseek(fp, root_location, SEEK_SET);
                         fwrite(&dirblocks, sizeof(dirblocks), 1, fp);
@@ -269,7 +273,7 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
                     // UPDATE SUBDIRECTORY
                     if (t > 1)
                     {
-                        printf("UPDATE SUBDIRECTORY\n");
+                        printf("275 UPDATE SUBDIRECTORY\n\n");
                         int subdir_location = sizeof(hd) + sizeof(btmp) + (blocksize * subdir_block_id[s - 1]);
                         fseek(fp, subdir_location, SEEK_SET);
                         fread(&dirblocks, sizeof(dirblocks), 1, fp);
@@ -291,13 +295,15 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
                         fseek(fp, subdir_location, SEEK_SET);
                         fwrite(&dirblocks, sizeof(dirblocks), 1, fp);
                     }
-                }
-                else
-                {
-                    SIFS_errno = SIFS_ENOENT;
-                    return 1;
+                    printf("Bitmap after dir removed: %s\n", btmp);
                 }
             }
+        }
+        if (!dirname_exists)
+        {
+
+            SIFS_errno = SIFS_ENOENT;
+            return 1;
         }
 
         fclose(fp);
