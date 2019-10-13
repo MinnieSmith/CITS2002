@@ -69,7 +69,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         // CHECK IF LAST TOKEN IS A FILE
         // FIND NUMBER OF FILES IN VOLUME
         int nfile = 0;
-        for (int i = 0; i < nblocks - 1; ++i)
+        for (int i = 0; i < nblocks; ++i)
         {
             if (btmp[i] == SIFS_FILE)
             {
@@ -83,7 +83,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         int f = 0;
         if (nfile > 0)
         {
-            for (int b = 1; b < nfile; ++b)
+            for (int b = 1; b < nblocks; ++b)
             {
                 if (btmp[b] == SIFS_FILE)
                 {
@@ -212,13 +212,12 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         //  CHECK IF MD5 ALREADY EXISTS
         for (int i = 0; i < nfile; ++i)
         {
+            printf("215: compare md5\n");
             int file_location = sizeof(hd) + sizeof(btmp) + (blocksize * file_block_number[i]);
             fseek(fp, file_location, SEEK_SET);
             fread(&fileblock, sizeof(fileblock), 1, fp);
-            char md5_str[MD5_STRLEN];
-            memcpy(md5_str, md5_infile, sizeof(md5_infile));
 
-            if (memcmp(md5_str, fileblock.md5, sizeof(md5_str)) == 0)
+            if (memcmp(md5_infile, fileblock.md5, sizeof(md5_infile)) == 0)
             {
                 strcpy(fileblock.filenames[fileblock.nfiles], path_tokens[t - 1]);
                 fileblock.nfiles++;
@@ -226,7 +225,8 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                 block_number_of_duplicate_md5 = i;
                 fseek(fp, file_location, SEEK_SET);
                 fwrite(&fileblock, sizeof(fileblock), 1, fp);
-                printf("Duplicate found, fileblock updated\n");
+                printf("229: Duplicate found, fileblock updated\n");
+                printf("duplicate block id: %i\n", block_number_of_duplicate_md5);
             }
         }
 
@@ -235,6 +235,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         //----------------------------------------------------------------------------------------------------------------------------------------
         if (duplicate_md5)
         {
+            printf("238: MD5 duplicate && update root\n");
             // UPDATE THE ROOT
             if (t == 1)
             {
@@ -259,6 +260,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
             // UPDATE ENTRY ON SUBDIRECTORY
             if (t > 1)
             {
+                printf("263: MD5 duplicate && update subdir\n");
                 SIFS_DIRBLOCK subdir_to_be_updated;
                 int subdir_to_be_updated_location = sizeof(hd) + sizeof(btmp) + (blocksize * subdir_block_id[s - 1]);
                 fseek(fp, subdir_to_be_updated_location, SEEK_SET);
@@ -288,8 +290,11 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         if (!duplicate_md5)
         {
             // CALCULATE THE NUMBER OF BLOCKS REQURIED FOR DATA
-            int data_blocks_required = ceil(nbytes / blocksize);
+            int data_blocks_required = (nbytes / blocksize) + 1;
+            printf("294: nbytes required: %zu\n", nbytes);
+            printf("datablocks required: %i\n", data_blocks_required);
             int total_blocks_required = data_blocks_required + 1;
+            printf("total blocks required: %i\n", total_blocks_required);
             int free_block_count = 0;
             for (int b = 1; b < nblocks; ++b)
             {
@@ -298,15 +303,18 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                     free_block_count++;
                 }
             }
+            printf("305: free block count: %i\n", free_block_count);
 
             if (total_blocks_required > free_block_count)
             {
+                printf("309: total blocks required is more than available blocks\n");
                 SIFS_errno = SIFS_ENOSPC;
                 return 1;
             }
 
             // FIND INDEX OF FIRST FIRST BLOCK WITH ADEQUATE CONTIGUOUS BLOCKS
             int unused_block_count = 0;
+
             int free_contiguous_block_number = 0; // block number of where the contiguous block starts
             bool enough_datablocks = false;
             for (int b = 1; b < nblocks; ++b)
@@ -314,10 +322,12 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                 if (btmp[b] == SIFS_UNUSED)
                 {
                     unused_block_count++;
+                    printf("324: unused block count: %i\n", unused_block_count);
                     if (unused_block_count == data_blocks_required)
                     {
                         free_contiguous_block_number = b - (data_blocks_required - 1);
                         enough_datablocks = true;
+                        break;
                     }
                 }
                 else
@@ -325,9 +335,11 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                     unused_block_count = 0;
                 }
             }
+            printf("340:Unused free contiguous block index: %i\n", free_contiguous_block_number);
 
             if (!enough_datablocks)
             {
+                printf("338: not enough data blocks\n");
                 SIFS_errno = SIFS_ENOSPC;
                 return 1;
             }
@@ -337,14 +349,12 @@ int SIFS_writefile(const char *volumename, const char *pathname,
             fseek(fp, data_block_location, SEEK_SET);
             for (int i = 0; i < data_blocks_required; ++i)
             {
-                fwrite((char*)data + (i * blocksize), blocksize, 1, fp);
+                fwrite((char *)data + (i * blocksize), blocksize, 1, fp);
                 printf("data written to datablock\n");
-                btmp[free_contiguous_block_number + i] = SIFS_FILE;
+                btmp[free_contiguous_block_number + i] = SIFS_DATABLOCK;
             }
 
-            // UPDATE BITMAP
-            fseek(fp, sizeof(hd), SEEK_SET);
-            fwrite(btmp, sizeof(btmp), 1, fp);
+
 
             // FIND INDEX OF FREE BLOCK FOR FILEBLOCK ASSIGNMENT
             int free_block_index = 0;
@@ -362,8 +372,8 @@ int SIFS_writefile(const char *volumename, const char *pathname,
             SIFS_FILEBLOCK newfile;
             strcpy(newfile.filenames[0], path_tokens[t - 1]);
             newfile.firstblockID = free_contiguous_block_number;
-            char *md5_formatted = MD5_format(md5_infile);
-            memcpy(newfile.md5, md5_formatted,sizeof(*md5_formatted));
+            // // char *md5_formatted = MD5_format(md5_infile);
+            memcpy(newfile.md5, md5_infile, sizeof(md5_infile));
             newfile.length = nbytes;
             newfile.nfiles = 1;
             newfile.modtime = time(NULL);
@@ -371,6 +381,12 @@ int SIFS_writefile(const char *volumename, const char *pathname,
             int newfile_location = sizeof(hd) + sizeof(btmp) + (free_block_index * blocksize);
             fseek(fp, newfile_location, SEEK_SET);
             fwrite(&newfile, blocksize, 1, fp);
+            btmp[free_block_index] = SIFS_FILE;
+
+            // UPDATE BITMAP
+            fseek(fp, sizeof(hd), SEEK_SET);
+            fwrite(btmp, sizeof(btmp), 1, fp);
+
 
             // UPDATE THE ROOT
             if (t == 1)
@@ -416,4 +432,3 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         return 1;
     }
 }
-
