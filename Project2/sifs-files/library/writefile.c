@@ -222,7 +222,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                 strcpy(fileblock.filenames[fileblock.nfiles], path_tokens[t - 1]);
                 fileblock.nfiles++;
                 duplicate_md5 = true;
-                block_number_of_duplicate_md5 = i;
+                block_number_of_duplicate_md5 = file_block_number[i];
                 fseek(fp, file_location, SEEK_SET);
                 fwrite(&fileblock, sizeof(fileblock), 1, fp);
                 printf("229: Duplicate found, fileblock updated\n");
