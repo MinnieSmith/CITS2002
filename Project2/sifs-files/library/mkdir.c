@@ -145,7 +145,7 @@ int SIFS_mkdir(const char *volumename, const char *dirname)
 
         int n = 0;
 
-        for (int b = 0; b < ndir; ++b)
+        for (int b = 0; b < nblocks; ++b)
         {
             if (btmp[b] == SIFS_DIR)
             {
@@ -214,12 +214,12 @@ int SIFS_mkdir(const char *volumename, const char *dirname)
         }
 
         // CHECK IF DIRECTORY NAME ALREADY EXISTS
-        for (int i = 0; i < ndir; i++)
+        for (int i = 0; i < nblocks; i++)
         {
             int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[i]);
             fseek(fp, dir_location, SEEK_SET);
             fread(&dirblocks, sizeof(dirblocks), 1, fp);
-            printf("dirblock name: %s\n", dirblocks.name);
+            printf("222: dirblock name: %s\n", dirblocks.name);
             if (strcmp(dirblocks.name, path_tokens[t - 1]) == 0)
             {
                 SIFS_errno = SIFS_EEXIST;

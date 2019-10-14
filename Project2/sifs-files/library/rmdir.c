@@ -98,7 +98,7 @@ int SIFS_rmdir(const char *volumename, const char *dirname)
         int f = 0;
         if (nfile > 0)
         {
-            for (int b = 1; b < nfile; ++b)
+            for (int b = 1; b < nblocks; ++b)
             {
                 if (btmp[b] == SIFS_FILE)
                 {

@@ -22,8 +22,8 @@ int main(int argcount, char *argvalue[])
     char *volumename; // filename storing the SIFS volume
     char *pathname;
     char *filename;
-    void **data = NULL;
-    size_t *nbytes = NULL;
+    void *data = NULL;
+    size_t nbytes = 0;
 
     //  ATTEMPT TO OBTAIN THE volumename FROM AN ENVIRONMENT VARIABLE
     if (argcount == 3)
@@ -50,24 +50,12 @@ int main(int argcount, char *argvalue[])
     }
 
     //  ATTEMPT TO READFILE
-    if (SIFS_readfile(volumename, pathname, data, nbytes) != 0)
+    if (SIFS_readfile(volumename, pathname, &data, &nbytes) != 0)
     {
         SIFS_perror(argvalue[0]);
         exit(EXIT_FAILURE);
     }
 
-
-
-    // printf("70: Attempt to open volume for reading\n");
-    // FILE *infp = fopen(volumename, "r");
-    // if (infp == NULL)
-    // {
-    //     SIFS_errno = SIFS_ENOVOL;
-    //     return 1;
-    // }
-
-    // fread(&data_buffer, *nbytes, 1, infp);
-    // printf("78:Data read to buffer\n");
 
     // WRITE DATA TO FIILE
     printf("82: Attempt to open file for writing\n");
@@ -77,9 +65,9 @@ int main(int argcount, char *argvalue[])
         SIFS_errno = SIFS_ECREATE;
         return 1;
     }
-    fwrite(data, *nbytes, 1, outfp);
+    fwrite(data, nbytes, 1, outfp);
     printf("89:Data written to file\n");
-    // fclose(infp);
+
     fclose(outfp);
 
     // free(&data_buffer);

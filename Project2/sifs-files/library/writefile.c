@@ -129,7 +129,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
 
         int n = 0;
 
-        for (int b = 0; b < ndir; ++b)
+        for (int b = 0; b < nblocks; ++b)
         {
             if (btmp[b] == SIFS_DIR)
             {
@@ -145,8 +145,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         if (t > 1)
         {
             printf("t = %i \n", t);
-            printf("size of header: %lu \t size of bitmap: %lu\t size of rootblock: %i\n", sizeof(hd), sizeof(btmp), blocksize);
-            for (int i = 0; i < ndir; ++i)
+            for (int i = 1; i < ndir; ++i)
             {
                 int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[i]);
                 printf("dirblocknumber: %i\n", dir_block_number[i]);
@@ -197,6 +196,20 @@ int SIFS_writefile(const char *volumename, const char *pathname,
             }
         }
 
+        // CHECK IF FILENAME IS THE SAME AS DIRECTORY NAME
+        for (int i = 1; i < ndir; ++i)
+            {
+                int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[i]);
+                fseek(fp, dir_location, SEEK_SET);
+                fread(&dirblocks, sizeof(dirblocks), 1, fp);
+                if (strcmp(dirblocks.name, path_tokens[t-1]) == 0)
+                {
+                    SIFS_errno = SIFS_EEXIST;
+                    printf("Filename is the same as a directory name\n");
+                    return 1;
+                }
+            }
+
         //----------------------------------------------------------------------------------------------------------------------------------------
         // CHECK FOR DUPLICATE FILES IN VOLUME
         //----------------------------------------------------------------------------------------------------------------------------------------
@@ -208,6 +221,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         bool duplicate_md5 = false;
 
         int block_number_of_duplicate_md5 = 0;
+
 
         //  CHECK IF MD5 ALREADY EXISTS
         for (int i = 0; i < nfile; ++i)
@@ -223,6 +237,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                 fileblock.nfiles++;
                 duplicate_md5 = true;
                 block_number_of_duplicate_md5 = file_block_number[i];
+ 
                 fseek(fp, file_location, SEEK_SET);
                 fwrite(&fileblock, sizeof(fileblock), 1, fp);
                 printf("229: Duplicate found, fileblock updated\n");
@@ -235,10 +250,11 @@ int SIFS_writefile(const char *volumename, const char *pathname,
         //----------------------------------------------------------------------------------------------------------------------------------------
         if (duplicate_md5)
         {
-            printf("238: MD5 duplicate && update root\n");
+            
             // UPDATE THE ROOT
             if (t == 1)
             {
+                printf("242: MD5 duplicate && update root\n");
                 int root_location = sizeof(hd) + sizeof(btmp);
                 fseek(fp, root_location, SEEK_SET);
                 fread(&dirblocks, sizeof(dirblocks), 1, fp);
@@ -260,8 +276,10 @@ int SIFS_writefile(const char *volumename, const char *pathname,
             // UPDATE ENTRY ON SUBDIRECTORY
             if (t > 1)
             {
-                printf("263: MD5 duplicate && update subdir\n");
+                printf("279: MD5 duplicate && update subdir\n");
+                printf("280: block number of duplicate md5: %i\n", block_number_of_duplicate_md5);
                 SIFS_DIRBLOCK subdir_to_be_updated;
+                int file_index = 0;
                 int subdir_to_be_updated_location = sizeof(hd) + sizeof(btmp) + (blocksize * subdir_block_id[s - 1]);
                 fseek(fp, subdir_to_be_updated_location, SEEK_SET);
                 fread(&subdir_to_be_updated, sizeof(subdir_to_be_updated), 1, fp);
@@ -273,8 +291,17 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                 }
                 else
                 {
+                    for(int i=0; i<SIFS_MAX_ENTRIES; ++i)
+                    {
+                        if(subdir_to_be_updated.entries[i].blockID == block_number_of_duplicate_md5)
+                        {
+                            file_index = subdir_to_be_updated.entries[i].fileindex;
+                            printf("fileindex = %i\n", file_index);
+                        }
+                    }
                     subdir_to_be_updated.entries[subdir_to_be_updated.nentries].blockID = block_number_of_duplicate_md5;
-                    subdir_to_be_updated.entries[subdir_to_be_updated.nentries].fileindex = fileblock.nfiles - 1;
+                    subdir_to_be_updated.entries[subdir_to_be_updated.nentries].fileindex = (file_index +1);
+                    printf("subdir to be updated file_index: %i\n", subdir_to_be_updated.entries[subdir_to_be_updated.nentries].fileindex);
                     subdir_to_be_updated.nentries += 1; // update number of entries
                     fseek(fp, subdir_to_be_updated_location, SEEK_SET);
                     fwrite(&subdir_to_be_updated, sizeof(subdir_to_be_updated), 1, fp);
