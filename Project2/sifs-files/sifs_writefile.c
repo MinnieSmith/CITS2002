@@ -98,6 +98,7 @@ int main(int argcount, char *argvalue[])
     	SIFS_perror(argvalue[0]);
     	exit(EXIT_FAILURE);
         }
-
+        
+        free(data);
         return EXIT_SUCCESS;
 }
