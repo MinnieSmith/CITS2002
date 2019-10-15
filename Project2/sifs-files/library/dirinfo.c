@@ -76,7 +76,7 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
         }
         printf("number of files in volume: %i\n", nfile);
 
-        // FIND THE BLOCK NUMBER OF THE DIRECTORY
+        // FIND THE BLOCK NUMBER OF THE FILES
         int file_block_number[nfile];
 
         int f = 0;
@@ -121,7 +121,7 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
         }
         printf("number of directories in volume: %i\n", ndir);
 
-        // FIND THE BLOCK NUMBER OF ALL THE DIRECTORIES IN FILE VIA BITMAP
+        // FIND THE BLOCK NUMBER OF ALL THE DIRECTORIES 
         int dir_block_numbers[ndir];
 
         int n = 0;
