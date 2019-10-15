@@ -105,7 +105,7 @@ int SIFS_writefile(const char *volumename, const char *pathname,
                     {
                         if (strcmp(fileblock.filenames[j], path_tokens[k]) == 0)
                         {
-                            SIFS_errno = SIFS_ENOTDIR;
+                            SIFS_errno = SIFS_EEXIST;
                             return 1;
                         }
                     }

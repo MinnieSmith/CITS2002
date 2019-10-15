@@ -176,6 +176,7 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
             }
 
             // CHECK IF LAST TOKEN OF PATHNAME IS A FILE
+            bool file_found = false;
             for (int i = 0; i < nfile; ++i)
             {
                 int file_location = sizeof(hd) + sizeof(btmp) + (blocksize * file_block_number[i]);
@@ -188,16 +189,18 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                     {
                         *length = fileblock.length;
                         *modtime = fileblock.modtime;
-                        break;
-                    }
-                    else
-                    {
-                        SIFS_errno = SIFS_ENOTFILE;
-                        return 1;
+                        file_found = true;
                     }
                 }
             }
+
+            if (!file_found)
+            {
+                SIFS_errno = SIFS_ENOTFILE;
+                return 1;
+            }
         }
+
         return 0;
     }
     else

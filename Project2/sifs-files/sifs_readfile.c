@@ -70,6 +70,6 @@ int main(int argcount, char *argvalue[])
 
     fclose(outfp);
 
-    // free(&data_buffer);
+    free(data);
     return EXIT_SUCCESS;
 }
