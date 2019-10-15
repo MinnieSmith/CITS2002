@@ -135,6 +135,7 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
             }
         }
 
+        
         // CHECK IF SUBDIRECTORY EXISTS
         int subdir_block_id[t - 1];
         int s = 0;
@@ -195,6 +196,7 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
 
         // FIND THE DIRECTORY
         int directory_block_number = 0;
+        int nentries_in_dir = 0;
         bool directory_found = false;
         for (int i = 0; i < ndir; ++i)
         {
@@ -203,10 +205,14 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
             fread(&dirblocks, sizeof(dirblocks), 1, fp);
             if (strcmp(dirblocks.name, path_tokens[t - 1]) == 0)
             {
+                printf("208:directory found\n");
                 directory_block_number = dir_block_numbers[i];
                 directory_found = true;
-                nentries = dirblocks.nentries;
-                modtime = dirblocks.modtime;
+                
+                *nentries = dirblocks.nentries;
+                nentries_in_dir = dirblocks.nentries;
+                *modtime = dirblocks.modtime;
+                printf("214\n");
             }
         }
         if (!directory_found)
@@ -214,10 +220,21 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
             SIFS_errno = SIFS_ENOENT;
         }
 
+
         // FIND THE BLOCK NUMBER OF ALL THE ENTRIES
-        int size = (int)nentries;
+        char **entries = NULL;
+        entries = (char**)malloc(sizeof(char));
+        if(entries == NULL)
+        {
+            SIFS_errno = SIFS_ENOMEM;
+            return 1;
+        }
+        printf("231\n");
+        int size = nentries_in_dir;
+        int nentries_in_block = 0;
         int dirblock_id_of_entries[size];
         int directory_location = sizeof(hd) + sizeof(btmp) + (blocksize * directory_block_number);
+        
         fseek(fp, directory_location, SEEK_SET);
         fread(&dirblocks, sizeof(dirblocks), 1, fp);
 
@@ -226,43 +243,39 @@ int SIFS_dirinfo(const char *volumename, const char *pathname,
             dirblock_id_of_entries[j] = dirblocks.entries[j].blockID;
         }
 
+        printf("237\n");
         // LOOP THROUGH ALL THE BLOCKS TO FIND EITHER DIRECTORY NAMES OR FILENAMES
-        for(int i=0; i<size; i++)
+        for (int i = 0; i < size; i++)
         {
-            if(btmp[dirblock_id_of_entries[i]] == SIFS_DIR)
+            if (btmp[dirblock_id_of_entries[i]] == SIFS_DIR)
             {
-                
+                printf("entry is a directory\n");
+                entries = realloc(entries, (nentries_in_block + 1) * sizeof(entries[0]));
+                int location = sizeof(hd) + sizeof(btmp) + (blocksize * dirblock_id_of_entries[i]);
+                fseek(fp, location, SEEK_SET);
+                fread(&dirblocks, sizeof(dirblocks), 1, fp);
+                entries[nentries_in_block] = strdup(dirblocks.name);
+                nentries_in_block++;
+            }
+            else if (btmp[dirblock_id_of_entries[i]] == SIFS_FILE)
+            {
+                printf("entry is a file\n");
+                entries = realloc(entries, (nentries_in_block + 1) * sizeof(entries[0]));
+                int location = sizeof(hd) + sizeof(btmp) + (blocksize * dirblock_id_of_entries[i]);
+                fseek(fp, location, SEEK_SET);
+                fread(&fileblock, sizeof(fileblock), 1, fp);
+                int fileblock_nentries = fileblock.nfiles;
+                for (int j = 0; j < fileblock_nentries; ++j)
+                {
+                    entries = realloc(entries, (nentries_in_block + 1) * sizeof(entries[0]));
+                    entries[nentries_in_block] = strdup(fileblock.filenames[j]);
+                    nentries_in_block++;
+                    printf("273\n");
+                }
             }
         }
 
-
-
-
-
-
-
-        // COPY VOLUME FILE INTO DATA BUFFER
-        int data_location = sizeof(hd) + sizeof(btmp) + (blocksize * first_data_block);
-
-        void *data_buffer = NULL;
-        data_buffer = malloc(data_size);
-
-        if (data_buffer == NULL)
-        {
-            SIFS_errno = SIFS_ENOMEM;
-            return 1;
-        }
-        else
-        {
-            fseek(fp, data_location, SEEK_SET);
-            fread(data_buffer, data_size, 1, fp);
-        }
-
-        printf("216: fread datablock into data buffer\n");
-
-        fclose(fp);
-
-        *data = data_buffer;
+        *entrynames = entries;
 
         return 0;
     }
