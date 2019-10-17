@@ -63,8 +63,6 @@ int main(int argcount, char *argvalue[])
         time_modified = (int)stat_buffer.st_mtime;
     }
 
-    printf("datasize: %zu\t modtime: %i\n", nbytes, time_modified);
-
 
     // COPY THE FILE INTO DATA BUFFER
     void *data = NULL;
@@ -76,7 +74,6 @@ int main(int argcount, char *argvalue[])
     }
     else
     {
-        printf("Attempt to open file for reading\n");
         FILE *fp = fopen(filename, "r");
         if (fp == NULL)
         {

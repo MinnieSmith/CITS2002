@@ -7,6 +7,8 @@
 
 #include "sifs-internal.h"
 
+//  Written by Minh Smith 20956909 October 2019
+
 // get information about a requested file
 int SIFS_fileinfo(const char *volumename, const char *pathname,
                   size_t *length, time_t *modtime)
@@ -24,7 +26,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
 
         // ATTEMPT TO OPEN THE VOLUME
         FILE *fp = fopen(volumename, "r");
-        printf("28:volume address %p\n", (void *)fp);
 
         // VOLUME OPEN FAILED
         if (fp == NULL)
@@ -40,7 +41,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
         fread(&hd, sizeof(hd), 1, fp);
         nblocks = hd.nblocks;
         blocksize = hd.blocksize;
-        printf("%i, %zu \n", nblocks, hd.blocksize);
 
         // READ BITMAP
         SIFS_BIT btmp[nblocks];
@@ -48,7 +48,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
         SIFS_FILEBLOCK fileblock;
         fseek(fp, sizeof(hd), SEEK_SET);
         fread(&btmp, sizeof(btmp), 1, fp);
-        printf("Bitmap: %s\n", btmp);
 
         // REMOVE ANY '/' FROM PATHNAME
         char *path_tokens[nblocks * SIFS_MAX_NAME_LENGTH];
@@ -59,11 +58,9 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
         while (token != NULL)
         {
             path_tokens[t] = token;
-            printf("token: %s\n", path_tokens[t]);
             token = strtok(NULL, "/");
             t++;
         }
-        printf("t = %i \n", t);
 
         // FIND NUMBER OF DIRECTORIES IN VOLUME
         int ndir = 0;
@@ -74,7 +71,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                 ndir++;
             }
         }
-        printf("number of directories in volume: %i\n", ndir);
 
         // FIND THE BLOCK NUMBER OF ALL THE DIRECTORIES IN FILE VIA BITMAP
         int dir_block_numbers[ndir];
@@ -96,12 +92,9 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
 
         if (t > 1)
         {
-            printf("t = %i \n", t);
             for (int i = 1; i < ndir; ++i)
             {
                 int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_numbers[i]);
-                printf("dirblocknumber: %i\n", dir_block_numbers[i]);
-                printf("dir_location: %i\n", dir_location);
                 fseek(fp, dir_location, SEEK_SET);
                 fread(&dirblocks, sizeof(dirblocks), 1, fp);
                 int token = 0;
@@ -110,7 +103,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                     if (strcmp(dirblocks.name, path_tokens[token]) == 0)
                     {
                         subdir_block_id[s] = dir_block_numbers[i];
-                        printf("s= %i\n", subdir_block_id[s]);
                         s++;
                     }
                     token++;
@@ -119,12 +111,12 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
             if (s < (t - 1))
             {
                 SIFS_errno = SIFS_EINVAL;
-                printf("No such subdirectory, please check pathname\n");
                 return 1;
             }
         }
 
         // CHECK IF PATH IS VALID
+        int path_valid_count = 0;
         if (t > 2)
         {
             for (int i = 0; i < (s - 1); ++i)
@@ -136,16 +128,15 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                 {
                     if (dirblocks.entries[j].blockID == subdir_block_id[i + 1])
                     {
-                        break;
-                    }
-                    else
-                    {
-                        SIFS_errno = SIFS_EINVAL;
-                        printf("Path incorrect, please check pathname\n");
-                        return 1;
+                        path_valid_count++;
                     }
                 }
             }
+        }
+        if (path_valid_count < (t - 2))
+        {
+            SIFS_errno = SIFS_EINVAL;
+            return 1;
         }
 
         // FIND NUMBER OF FILES IN VOLUME
@@ -157,7 +148,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                 nfile++;
             }
         }
-        printf("number of files in volume: %i\n", nfile);
 
         // FIND THE BLOCK NUMBER OF THE FILES
         int file_block_number[nfile];
@@ -170,7 +160,6 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                 if (btmp[b] == SIFS_FILE)
                 {
                     file_block_number[f] = b;
-                    printf("fileblock number: %i\n", file_block_number[f]);
                     f++;
                 }
             }
@@ -190,6 +179,32 @@ int SIFS_fileinfo(const char *volumename, const char *pathname,
                         *length = fileblock.length;
                         *modtime = fileblock.modtime;
                         file_found = true;
+                        // CHECK IF PATH IS VALID PART TWO
+                        int block_id_in_search = file_block_number[i];
+                        int nreverse = 0;
+                        for (int r = 0; r < ndir; ++r)
+                        {
+                            for (int s = 0; s < ndir; ++s)
+                            {
+                                int subdir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_numbers[s]);
+                                fseek(fp, subdir_location, SEEK_SET);
+                                fread(&dirblocks, sizeof(dirblocks), 1, fp);
+                                for (int t = 0; t < dirblocks.nentries; t++)
+                                {
+                                    if (dirblocks.entries[t].blockID == block_id_in_search)
+                                    {
+                                        block_id_in_search = dir_block_numbers[s];
+                                        nreverse++;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (nreverse != t)
+                        {
+                            SIFS_errno = SIFS_EINVAL;
+                            return 1;
+                        }
                     }
                 }
             }

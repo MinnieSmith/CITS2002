@@ -58,7 +58,6 @@ int main(int argcount, char *argvalue[])
 
 
     // WRITE DATA TO FIILE
-    printf("82: Attempt to open file for writing\n");
     FILE *outfp = fopen(filename, "w");
     if (outfp == NULL)
     {
@@ -66,8 +65,6 @@ int main(int argcount, char *argvalue[])
         return 1;
     }
     fwrite(data, nbytes, 1, outfp);
-    printf("89:Data written to file\n");
-
     fclose(outfp);
 
     free(data);

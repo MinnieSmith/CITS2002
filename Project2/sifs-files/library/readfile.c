@@ -8,6 +8,8 @@
 
 #include "sifs-internal.h"
 
+//  Written by Minh Smith 20956909 October 2019
+
 // read the contents of an existing file from an existing volume
 int SIFS_readfile(const char *volumename, const char *pathname,
                   void **data, size_t *nbytes)
@@ -25,7 +27,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
 
         // ATTEMPT TO OPEN THE VOLUME
         FILE *fp = fopen(volumename, "r");
-        printf("28:volume address %p\n", (void *)fp);
 
         // VOLUME OPEN FAILED
         if (fp == NULL)
@@ -41,7 +42,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
         fread(&hd, sizeof(hd), 1, fp);
         nblocks = hd.nblocks;
         blocksize = hd.blocksize;
-        printf("%i, %zu \n", nblocks, hd.blocksize);
 
         // READ BITMAP
         SIFS_BIT btmp[nblocks];
@@ -49,7 +49,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
         SIFS_FILEBLOCK fileblock;
         fseek(fp, sizeof(hd), SEEK_SET);
         fread(&btmp, sizeof(btmp), 1, fp);
-        printf("Bitmap: %s\n", btmp);
 
         // REMOVE ANY '/' FROM PATHNAME
         char *path_tokens[nblocks * SIFS_MAX_NAME_LENGTH];
@@ -60,11 +59,9 @@ int SIFS_readfile(const char *volumename, const char *pathname,
         while (token != NULL)
         {
             path_tokens[t] = token;
-            printf("token: %s\n", path_tokens[t]);
             token = strtok(NULL, "/");
             t++;
         }
-        printf("t = %i \n", t);
 
         // FIND NUMBER OF DIRECTORIES IN VOLUME
         int ndir = 0;
@@ -75,7 +72,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
                 ndir++;
             }
         }
-        printf("number of directories in volume: %i\n", ndir);
 
         // FIND THE BLOCK NUMBER OF ALL THE DIRECTORIES IN FILE VIA BITMAP
         int dir_block_number[ndir];
@@ -97,12 +93,9 @@ int SIFS_readfile(const char *volumename, const char *pathname,
 
         if (t > 1)
         {
-            printf("t = %i \n", t);
             for (int i = 1; i < ndir; ++i)
             {
                 int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[i]);
-                printf("dirblocknumber: %i\n", dir_block_number[i]);
-                printf("dir_location: %i\n", dir_location);
                 fseek(fp, dir_location, SEEK_SET);
                 fread(&dirblocks, sizeof(dirblocks), 1, fp);
                 int token = 0;
@@ -111,7 +104,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
                     if (strcmp(dirblocks.name, path_tokens[token]) == 0)
                     {
                         subdir_block_id[s] = dir_block_number[i];
-                        printf("s= %i\n", subdir_block_id[s]);
                         s++;
                     }
                     token++;
@@ -120,12 +112,12 @@ int SIFS_readfile(const char *volumename, const char *pathname,
             if (s < (t - 1))
             {
                 SIFS_errno = SIFS_EINVAL;
-                printf("No such subdirectory, please check pathname\n");
                 return 1;
             }
         }
 
         // CHECK IF PATH IS VALID
+        int path_valid_count = 0;
         if (t > 2)
         {
             for (int i = 0; i < (s - 1); ++i)
@@ -137,15 +129,56 @@ int SIFS_readfile(const char *volumename, const char *pathname,
                 {
                     if (dirblocks.entries[j].blockID == subdir_block_id[i + 1])
                     {
-                        break;
-                    }
-                    else
-                    {
-                        SIFS_errno = SIFS_EINVAL;
-                        printf("Path incorrect, please check pathname\n");
-                        return 1;
+                        path_valid_count++;
                     }
                 }
+            }
+        }
+        if (path_valid_count < (t - 2))
+        {
+            SIFS_errno = SIFS_EINVAL;
+            return 1;
+        }
+
+        // CHECK IF PATH IS VALID PART TWO
+        if (t > 1)
+        {
+            // find the directory with first subdirectory
+            int block_id_in_search = 0;
+            for (int i = 0; i < ndir; ++i)
+            {
+                int dir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[i]);
+                fseek(fp, dir_location, SEEK_SET);
+                fread(&dirblocks, sizeof(dirblocks), 1, fp);
+                if (strcmp(dirblocks.name, path_tokens[t - 2]) == 0)
+                {
+                    block_id_in_search = dir_block_number[i];
+                }
+            }
+
+            // trace back the directory path to see if pathname provide is valid
+            int nreverse = 0;
+            for (int r = 0; r < ndir; ++r)
+            {
+                for (int s = 0; s < ndir; ++s)
+                {
+                    int subdir_location = sizeof(hd) + sizeof(btmp) + (blocksize * dir_block_number[s]);
+                    fseek(fp, subdir_location, SEEK_SET);
+                    fread(&dirblocks, sizeof(dirblocks), 1, fp);
+                    for (int t = 0; t < dirblocks.nentries; t++)
+                    {
+                        if (dirblocks.entries[t].blockID == block_id_in_search)
+                        {
+                            block_id_in_search = dir_block_number[s];
+                            nreverse++;
+                        }
+                    }
+                }
+            }
+            if (nreverse != (t - 1))
+            {
+                SIFS_errno = SIFS_EINVAL;
+                return 1;
             }
         }
 
@@ -158,7 +191,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
                 nfile++;
             }
         }
-        printf("number of files in volume: %i\n", nfile);
 
         // FIND THE BLOCK NUMBER OF DATA
         int file_block_number[nfile];
@@ -175,7 +207,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
                 if (btmp[b] == SIFS_FILE)
                 {
                     file_block_number[f] = b;
-                    printf("fileblock number: %i\n", file_block_number[f]);
                     f++;
                 }
             }
@@ -197,7 +228,6 @@ int SIFS_readfile(const char *volumename, const char *pathname,
                         data_size = fileblock.length;
                         file_found = true;
                         // data = malloc(*nbytes);
-                        printf("194: fileblock found: %i\t nbytes:%zu\t datablock starts at: %i\n", block_number_of_file, *nbytes, first_data_block);
                         break;
                     }
                 }
@@ -225,15 +255,11 @@ int SIFS_readfile(const char *volumename, const char *pathname,
         {
             fseek(fp, data_location, SEEK_SET);
             fread(data_buffer, data_size, 1, fp);
-            
         }
-        
-
-        printf("216: fread datablock into data buffer\n");
 
         fclose(fp);
 
-        *data = data_buffer; 
+        *data = data_buffer;
 
         return 0;
     }
